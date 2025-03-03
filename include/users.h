@@ -3,6 +3,7 @@
 
 #include <unordered_map>
 #include <string>
+#include <vector>  // ✅ Se agregó esta línea para definir std::vector
 #include <mutex>
 #include <libwebsockets.h>
 
