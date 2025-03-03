@@ -9,6 +9,11 @@ std::vector<std::string> userList;
 std::vector<std::string> chatHistory;
 std::string errorMessage;
 
+// ✅ Definir las variables fuera del `switch`
+uint8_t messageType;
+uint8_t dataSize;
+std::vector<uint8_t> data;
+
 /**
  * Callback para manejar eventos de WebSockets
  */
@@ -20,9 +25,11 @@ static int websocketCallback(struct lws *wsi, enum lws_callback_reasons reason, 
 
         case LWS_CALLBACK_CLIENT_RECEIVE:
             if (len < 2) break;
-            uint8_t messageType = ((uint8_t *)in)[0];
-            uint8_t dataSize = ((uint8_t *)in)[1];
-            std::vector<uint8_t> data((uint8_t *)in + 2, (uint8_t *)in + 2 + dataSize);
+
+            // ✅ Ahora las variables ya están declaradas fuera del switch
+            messageType = ((uint8_t *)in)[0];
+            dataSize = ((uint8_t *)in)[1];
+            data.assign((uint8_t *)in + 2, (uint8_t *)in + 2 + dataSize);
 
             handleServerMessage(messageType, data);
             break;
@@ -43,6 +50,13 @@ static int websocketCallback(struct lws *wsi, enum lws_callback_reasons reason, 
 bool connectToServer(const std::string &ip, int port) {
     struct lws_context_creation_info info = {};
     info.port = CONTEXT_PORT_NO_LISTEN;
+
+    // ✅ Definir protocols correctamente
+    static struct lws_protocols protocols[] = {
+        { "chat-protocol", websocketCallback, 0, BUFFER_SIZE },
+        { NULL, NULL, 0, 0 }
+    };
+
     info.protocols = protocols;
     info.gid = -1;
     info.uid = -1;
@@ -66,62 +80,4 @@ bool connectToServer(const std::string &ip, int port) {
 
     std::cout << "Conectando a " << url << "\n";
     return true;
-}
-
-/**
- * Manejo de mensajes recibidos del servidor
- */
-void handleServerMessage(uint8_t messageType, const std::vector<uint8_t> &data) {
-    switch (messageType) {
-        case 51: { // Lista de usuarios conectados
-            userList.clear();
-            int numUsers = data[0];
-            int index = 1;
-            for (int i = 0; i < numUsers; i++) {
-                int nameLength = data[index++];
-                std::string username(data.begin() + index, data.begin() + index + nameLength);
-                index += nameLength;
-                userList.push_back(username);
-            }
-            break;
-        }
-
-        case 55: { // Mensaje recibido
-            std::string message(data.begin(), data.end());
-            chatHistory.push_back(message);
-            break;
-        }
-
-        case 56: { // Historial de mensajes
-            chatHistory.clear();
-            int numMessages = data[0];
-            int index = 1;
-            for (int i = 0; i < numMessages; i++) {
-                int msgLength = data[index++];
-                std::string msg(data.begin() + index, data.begin() + index + msgLength);
-                index += msgLength;
-                chatHistory.push_back(msg);
-            }
-            break;
-        }
-
-        case 50: { // Error recibido
-            errorMessage = "Error: " + std::to_string(data[0]);
-            break;
-        }
-    }
-}
-
-/**
- * Enviar mensaje al servidor
- */
-void sendMessageToServer(uint8_t messageType, const std::vector<uint8_t> &data) {
-    if (!webSocket) return;
-
-    std::vector<uint8_t> buffer(2 + data.size());
-    buffer[0] = messageType;
-    buffer[1] = data.size();
-    std::memcpy(buffer.data() + 2, data.data(), data.size());
-
-    lws_write(webSocket, buffer.data(), buffer.size(), LWS_WRITE_BINARY);
 }

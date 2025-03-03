@@ -1,8 +1,8 @@
 #include "imgui_ui.h"
 #include "network.h"
-#include "imgui.h"
-#include "imgui_impl_glfw.h"
-#include "imgui_impl_opengl3.h"
+#include "third_party/imgui/imgui.h"
+#include "third_party/imgui/imgui_impl_glfw.h"
+#include "third_party/imgui/imgui_impl_opengl3.h"
 #include <GLFW/glfw3.h>
 #include <iostream>
 
