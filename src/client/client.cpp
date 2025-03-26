@@ -1,14 +1,16 @@
-#include "network.h"
-#include "imgui_ui.h"
+#include <FL/Fl.H>
+#include <FL/Fl_Window.H>
+#include <FL/Fl_Button.H>
 
-/**
- * Punto de entrada del cliente.
- */
+void on_button_click(Fl_Widget*, void*) {
+    printf("¡Botón presionado!\n");
+}
+
 int main() {
-    if (!connectToServer("127.0.0.1", 8080)) {
-        return -1;
-    }
-
-    startUI();
-    return 0;
+    Fl_Window window(300, 200, "FLTK Ejemplo");
+    Fl_Button button(100, 75, 100, 50, "Presiona");
+    button.callback(on_button_click);
+    
+    window.show();
+    return Fl::run();
 }
