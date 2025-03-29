@@ -1,34 +1,49 @@
-CXX := g++
-CXXFLAGS := -std=c++17 -Wall -Wextra -Iinclude
-LDFLAGS := -lfltk -lfltk_images -lfltk_forms -lfltk_gl # Bibliotecas de FLTK
+CXX        := g++
+CXXFLAGS   := -std=c++17 -Wall -Wextra -Iinclude
+
+# FLTK para cliente
+CLIENT_LDFLAGS := -lfltk -lfltk_images -lfltk_forms -lfltk_gl
+
+# libwebsockets para servidor
+SERVER_LDFLAGS := -lwebsockets
 
 # Directorios
-SRC_DIR := src/client
 BUILD_DIR := build
-OBJ_DIR := $(BUILD_DIR)/obj
+OBJ_DIR   := $(BUILD_DIR)/obj
 
-# Encuentra todos los archivos fuente en src/client
-SRCS := $(wildcard $(SRC_DIR)/*.cpp)
-OBJS := $(SRCS:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/%.o)
+# Fuentes
+CLIENT_SRCS := $(wildcard src/client/*.cpp)
+SERVER_SRCS := $(wildcard src/server/*.cpp)
 
-# Nombre del ejecutable
-TARGET := $(BUILD_DIR)/client
+# Objetos
+CLIENT_OBJS := $(CLIENT_SRCS:src/client/%.cpp=$(OBJ_DIR)/client_%.o)
+SERVER_OBJS := $(SERVER_SRCS:src/server/%.cpp=$(OBJ_DIR)/server_%.o)
 
-# Regla principal
-all: $(TARGET)
+# Ejecutables
+CLIENT_BIN := $(BUILD_DIR)/client
+SERVER_BIN := $(BUILD_DIR)/servidor
 
-# Compilar el ejecutable
-$(TARGET): $(OBJS)
+.PHONY: all clean
+
+all: $(CLIENT_BIN) $(SERVER_BIN)
+
+# --- Cliente ---
+$(CLIENT_BIN): $(CLIENT_OBJS)
 	@mkdir -p $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(CLIENT_LDFLAGS)
 
-# Compilar cada archivo fuente
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
+$(OBJ_DIR)/client_%.o: src/client/%.cpp
 	@mkdir -p $(OBJ_DIR)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-# Limpiar archivos compilados
+# --- Servidor ---
+$(SERVER_BIN): $(SERVER_OBJS)
+	@mkdir -p $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(SERVER_LDFLAGS)
+
+$(OBJ_DIR)/server_%.o: src/server/%.cpp
+	@mkdir -p $(OBJ_DIR)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
 clean:
 	rm -rf $(BUILD_DIR)
-
-.PHONY: all clean
