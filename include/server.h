@@ -1,11 +1,6 @@
 #ifndef SERVER_H
 #define SERVER_H
 
-#include "sockets.h"
+#include "sockets.h"  // Se reutiliza la declaración de startServer
 
-/**
- * Inicia el servidor en el puerto especificado.
- */
-void startServer(int port);
-
-#endif
+#endif // SERVER_H

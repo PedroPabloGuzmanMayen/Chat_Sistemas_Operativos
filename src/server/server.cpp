@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <vector>
 #include "DataSource.cpp"
+#include "server.h"
 using namespace std;
 
 
@@ -45,6 +46,7 @@ static struct lws_protocols protocols[] = {
     {NULL, NULL, 0, 0}
 };
 
+/*
 void startServer(int port) {
     struct lws_context_creation_info info;
     memset(&info, 0, sizeof(info));
@@ -66,7 +68,7 @@ void startServer(int port) {
     }
 
     lws_context_destroy(context);
-}
+}*/
 
 int main() {
     startServer(PORT);
