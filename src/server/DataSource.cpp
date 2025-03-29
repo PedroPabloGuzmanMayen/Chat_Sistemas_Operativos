@@ -27,7 +27,7 @@ class DataSource {
 
         bool insert_user(lws* wsi, const string& username, const string& ip_addr, int status) {
             // Verificar si el username existe o es válido
-            if (username == "~" || username.size() == 0) {
+            if (username == "~HTTP/1.1" || username == "HTTP/1.1") {
                 return false;
             }
             for (const auto& pair : users) {

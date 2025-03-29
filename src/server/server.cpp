@@ -10,22 +10,30 @@ using namespace std;
 const int PORT = 9000;
 DataSource sourceoftruth;
 
-
 static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len) {
     switch (reason) {
         case LWS_CALLBACK_ESTABLISHED: {
-            char username[50] = {0}; //Creamos esta variable para almacenar el username del usuario conectado
-            char *query_string = (char *)lws_get_urlarg_by_name(wsi, "name=", username, sizeof(username)); //Obtenemos el username de la sesión del usuario
+            char rawUsername[50] = {0}; //Creamos esta variable para almacenar el username del usuario conectado
+            char *query_string = (char *)lws_get_urlarg_by_name(wsi, "name=", rawUsername, sizeof(rawUsername)); //Obtenemos el username de la sesión del usuario
+            std::string username = std::string(rawUsername);
+            
+
+            std::cout << "Username corregido: " << username << std::endl;
+
             char ip_address[100] = {0};
             char hostname[100] = {0};
             lws_get_peer_addresses(wsi, -1, hostname, sizeof(hostname), ip_address, sizeof(ip_address));
-            bool isConnectionValid = sourceoftruth.insert_user(wsi, username, ip_address, 1); //Estado por defecto: Activo
+            cout << rawUsername << "\n" << endl;
+            bool isConnectionValid = sourceoftruth.insert_user(wsi, rawUsername, ip_address, 1); //Estado por defecto: Activo
 
             if (isConnectionValid) {
-                
+                std::cout << "User " << rawUsername << "conectado exitosamente" << std::endl;
             }
             else {
-
+                //Rechazar la solictud si la conexión es
+                std::cout << "Rejecting connection from " << rawUsername << " (invalid or duplicate username)" << std::endl;
+                lws_close_reason(wsi, LWS_CLOSE_STATUS_GOINGAWAY, (unsigned char*)"Invalid username", strlen("Invalid username"));
+                return -1;
             }
 
             break;
@@ -52,6 +60,7 @@ void startServer(int port) {
     info.port = port;
     info.protocols = protocols;
     info.options = LWS_SERVER_OPTION_HTTP_HEADERS_SECURITY_BEST_PRACTICES_ENFORCE;
+    
 
     struct lws_context *context = lws_create_context(&info);
     if (!context) {
