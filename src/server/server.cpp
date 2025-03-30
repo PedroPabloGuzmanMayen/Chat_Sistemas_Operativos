@@ -10,6 +10,7 @@ using namespace std;
 const int PORT = 9000;
 DataSource sourceoftruth;
 
+
 static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len) {
     switch (reason) {
         case LWS_CALLBACK_ESTABLISHED: {
@@ -43,9 +44,30 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
         }
         case LWS_CALLBACK_RECEIVE: {
 
-            if (len > 0){
-                
+            if (len > 1) return;
+
+            unsigned char *data = (unsigned char*)in; //Obtener el array que envía el cliente
+            uint8_t messagetype = data[0];
+
+            switch(messagetype){
+                case 1: {
+                    break;
+                }
+                case 2: {
+                    break;
+                }
+                case 3: {
+                    break;
+                }
+                case 4: {
+                    break;
+                }
+                case 5:{
+                    break;
+                }
             }
+
+
         }
 
     }   
