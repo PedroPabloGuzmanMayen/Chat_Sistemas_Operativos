@@ -4,6 +4,8 @@
 #include <unordered_map>
 #include <vector>
 #include <set>
+#include <map>
+#include <unordered_set>
 
 using namespace std;
 
@@ -23,7 +25,7 @@ class DataSource {
     private:
         unordered_map<lws*, User> users; // Nos ayuda a asociar una sesión con un usuario
         vector<ChatMessage> generalChat; //Vector que contiene los mensajes del chat general
-        unordered_map<set<string>, vector<ChatMessage>> privateChats;
+        map<unordered_set<string>, vector<ChatMessage>> privateChats;
 
     public:
         vector<string> getUsernames() {
@@ -47,11 +49,5 @@ class DataSource {
             // Si no existe o no es un nombre inválido, insertar 
             users[wsi] = {username, ip_addr, status};
             return true;
-        }
-
-        void insert_new_Chat(uint8_t arr[]) {
-
-
-
         }
 };
