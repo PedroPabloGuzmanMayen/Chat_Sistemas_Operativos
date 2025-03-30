@@ -25,18 +25,12 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
                     realUser += username[i];  
                 }
             }
-
-
-            std::cout << "Username corregido: " << realUser << std::endl;
-
             char ip_address[100] = {0};
             char hostname[100] = {0};
             lws_get_peer_addresses(wsi, -1, hostname, sizeof(hostname), ip_address, sizeof(ip_address));
-            cout << rawUsername << "\n" << endl;
-            bool isConnectionValid = sourceoftruth.insert_user(wsi, rawUsername, ip_address, 1); //Estado por defecto: Activo
-
+            bool isConnectionValid = sourceoftruth.insert_user(wsi, realUser, ip_address, 1); //Estado por defecto: Activo
             if (isConnectionValid) {
-                std::cout << "User " << rawUsername << "conectado exitosamente" << std::endl;
+                std::cout << "User " << realUser << "conectado exitosamente" << std::endl;
             }
             else {
                 //Rechazar la solictud si la conexión es
