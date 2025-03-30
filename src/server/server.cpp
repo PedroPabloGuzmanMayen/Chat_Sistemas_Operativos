@@ -73,7 +73,7 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
         }
         case LWS_CALLBACK_RECEIVE: {
 
-            if (len < 1) return;
+            if (len < 1) return 0;
 
             unsigned char *data = (unsigned char*)in; //Obtener el array que envía el cliente
             uint8_t messagetype = data[0];
