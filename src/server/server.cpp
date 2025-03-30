@@ -16,9 +16,18 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
             char rawUsername[50] = {0}; //Creamos esta variable para almacenar el username del usuario conectado
             char *query_string = (char *)lws_get_urlarg_by_name(wsi, "name=", rawUsername, sizeof(rawUsername)); //Obtenemos el username de la sesión del usuario
             std::string username = std::string(rawUsername);
-            
+            string realUser = "";
+            for (int i = 0; i<username.length(); i++){
+                if (i == username.length()-8){
+                    break;
+                }
+                else {
+                    realUser += username[i];  
+                }
+            }
 
-            std::cout << "Username corregido: " << username << std::endl;
+
+            std::cout << "Username corregido: " << realUser << std::endl;
 
             char ip_address[100] = {0};
             char hostname[100] = {0};

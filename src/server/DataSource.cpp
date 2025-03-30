@@ -3,6 +3,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <vector>
+#include <set>
 
 using namespace std;
 
@@ -12,9 +13,17 @@ struct User {
     int status;
 };
 
+struct ChatMessage {
+    std::string sender;
+    std::string receiver;  // Puede ser "~" para chat general
+    std::string content;
+};
+
 class DataSource {
     private:
-        std::unordered_map<lws*, User> users; // Nos ayuda a asociar una sesión con un usuario
+        unordered_map<lws*, User> users; // Nos ayuda a asociar una sesión con un usuario
+        vector<ChatMessage> generalChat; //Vector que contiene los mensajes del chat general
+        unordered_map<set<string>, vector<ChatMessage>> privateChats;
 
     public:
         vector<string> getUsernames() {
@@ -27,7 +36,7 @@ class DataSource {
 
         bool insert_user(lws* wsi, const string& username, const string& ip_addr, int status) {
             // Verificar si el username existe o es válido
-            if (username == "~HTTP/1.1" || username == "HTTP/1.1" || username.size() > 18) {
+            if (username == "~" || username == "" || username.length() > 10) {
                 return false;
             }
             for (const auto& pair : users) {
@@ -38,5 +47,11 @@ class DataSource {
             // Si no existe o no es un nombre inválido, insertar 
             users[wsi] = {username, ip_addr, status};
             return true;
+        }
+
+        void insert_new_Chat(uint8_t arr[]) {
+
+
+
         }
 };
