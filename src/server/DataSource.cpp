@@ -15,6 +15,41 @@ struct User {
     int status;
 };
 
+enum UserStatus {
+    DISCONNECTED = 0,
+    ACTIVE = 1,
+    BUSY = 2,
+    INACTIVE = 3
+};
+
+// Códigos de mensajes del cliente al servidor
+enum ClientMessageType {
+    LIST_USERS = 1,
+    GET_USER = 2,
+    CHANGE_STATUS = 3,
+    SEND_MESSAGE = 4,
+    GET_CHAT_HISTORY = 5
+};
+
+// Códigos de mensajes del servidor al cliente
+enum ServerMessageType {
+    ERROR = 50,
+    USER_LIST_RESPONSE = 51,
+    USER_INFO_RESPONSE = 52,
+    USER_REGISTERED = 53,
+    USER_STATUS_CHANGED = 54,
+    MESSAGE_RECEIVED = 55,
+    CHAT_HISTORY_RESPONSE = 56
+};
+
+// Códigos de error
+enum ErrorType {
+    USER_NOT_FOUND = 1,
+    INVALID_STATUS = 2,
+    EMPTY_MESSAGE = 3,
+    USER_DISCONNECTED = 4
+};
+
 struct ChatMessage {
     std::string sender;
     std::string receiver;  // Puede ser "~" para chat general
@@ -49,5 +84,15 @@ class DataSource {
             // Si no existe o no es un nombre inválido, insertar 
             users[wsi] = {username, ip_addr, status};
             return true;
+        }
+        //Método para hallar los usuarios que están conectados
+        std::vector<User> getConnectedUsers() {
+            std::vector<User> connected;
+            for (const auto& [username, user] : users) {
+                if (user.status != DISCONNECTED) {
+                    connected.push_back(user);
+                }
+            }
+            return connected;
         }
 };
