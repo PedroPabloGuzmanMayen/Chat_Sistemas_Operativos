@@ -78,7 +78,6 @@ void returnSingleUserToClient(struct lws *wsi, const string& username) {
 void changeUserStatus(struct lws *wsi) { //Función para cambiar el estado de un usuario. 
     //Preparar el buffer
     unsigned char *buffer = message_buffer + LWS_PRE;
-    unsigned char *buffer = message_buffer + LWS_PRE;
     
 }
 
