@@ -75,10 +75,41 @@ void returnSingleUserToClient(struct lws *wsi, const string& username) {
     lws_write(wsi, buffer, total_length, LWS_WRITE_BINARY);
 }
 
-void changeUserStatus(struct lws *wsi) { //Función para cambiar el estado de un usuario. 
-    //Preparar el buffer
-    unsigned char *buffer = message_buffer + LWS_PRE;
+void changeUserStatus(struct lws *wsi, int newStatus) { //Función para cambiar el estado de un usuario. 
     
+    User* user_to_change = sourceoftruth.get_user_by_wsi(wsi);
+    if (!user_to_change){
+        unsigned char *buffer = message_buffer + LWS_PRE;
+        buffer[0] = ERROR; // Código de error (50)
+        buffer[1] = USER_NOT_FOUND; // Código de error específico (1)
+        lws_write(wsi, buffer, 2, LWS_WRITE_BINARY);
+        return;
+    }
+    else if (!isValidUserStatus(newStatus)) {
+        //Si el estado no está en los posibles estado, enviar error
+        unsigned char *buffer = message_buffer + LWS_PRE;
+        buffer[0] = ERROR; // Código de error (50)
+        buffer[1] = INVALID_STATUS; // Código de error específico (1)
+        lws_write(wsi, buffer, 2, LWS_WRITE_BINARY);
+        return;
+    }
+    unsigned char *buffer = message_buffer + LWS_PRE;
+    sourceoftruth.changeStatus(wsi, newStatus);
+
+    buffer[0] = USER_STATUS_CHANGED;
+    buffer[1] = static_cast<unsigned char>(user_to_change->username.length());
+    memcpy(buffer + 2, user_to_change->username.c_str(), user_to_change->username.length()); //Copiar el username
+    buffer[2 + user_to_change->username.length()] = static_cast<unsigned char>(user_to_change->status); //Agregar el estado
+    auto connectedUsers = sourceoftruth.getConnectedUsers();
+    size_t total_length = 2 + user_to_change->username.length() + 1;
+    //Enviar a todos los usuarios
+    for (const auto& user : connectedUsers) {
+        // Obtener el WSI asociado a cada usuario
+            lws* userWsi = sourceoftruth.get_wsi_by_username(user.username);
+            if (userWsi != nullptr) { //Verificar si existe el usuario
+                lws_write(userWsi, buffer, total_length, LWS_WRITE_BINARY);
+            }
+    }
 }
 
 void sendMessage(struct lws *wsi, string reciever, string content){
@@ -166,7 +197,7 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
                     returnSingleUserToClient(wsi, userTofind);
                 }
                 case 3: {
-
+                    changeUserStatus(wsi, data[len-1]);
                     break;
                 }
                 case 4: {
