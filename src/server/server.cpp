@@ -75,6 +75,48 @@ void returnSingleUserToClient(struct lws *wsi, const string& username) {
     lws_write(wsi, buffer, total_length, LWS_WRITE_BINARY);
 }
 
+void changeUserStatus(struct lws *wsi) { //Función para cambiar el estado de un usuario. 
+    //Preparar el buffer
+    unsigned char *buffer = message_buffer + LWS_PRE;
+    unsigned char *buffer = message_buffer + LWS_PRE;
+    
+}
+
+void sendMessage(struct lws *wsi, string reciever, string content){
+    unsigned char *buffer = message_buffer + LWS_PRE;
+    struct lws* receiverWsi = sourceoftruth. get_wsi_by_username(reciever);
+    User* sender = sourceoftruth.get_user_by_wsi(wsi);
+    if (!receiverWsi && !sender){
+        unsigned char *buffer = message_buffer + LWS_PRE;
+        buffer[0] = ERROR; // Código de error (50)
+        buffer[1] = USER_NOT_FOUND; // Código de error específico (1)
+        lws_write(wsi, buffer, 2, LWS_WRITE_BINARY);
+        return;
+    }
+    unsigned char *buffer = message_buffer + LWS_PRE;
+    sourceoftruth.insertMessage(wsi, reciever, content);
+    buffer[0] = MESSAGE_RECEIVED;
+    buffer[1] = static_cast<unsigned char>(sender->username.length());
+    memcpy(buffer + 2, sender->username.c_str(), sender->username.length());
+    buffer[2+sender->username.length()] = static_cast<unsigned char>(content.length()); //Len del mensaje
+    memcpy(buffer + 3 +sender->username.length(), content.c_str(), content.length()); // Contenido del mensaje
+    size_t total_length = 2 + sender->username.length() + content.length();
+    if (reciever == "~"){
+        auto connectedUsers = sourceoftruth.getConnectedUsers();
+        for (const auto& user : connectedUsers) {
+        // Obtener el WSI asociado a cada usuario
+            lws* userWsi = sourceoftruth.get_wsi_by_username(user.username);
+            if (userWsi != nullptr) { //Verificar si existe el usuario
+                lws_write(userWsi, buffer, total_length, LWS_WRITE_BINARY);
+            }
+        }
+    }
+    else {
+        lws_write(receiverWsi, buffer, total_length, LWS_WRITE_BINARY); //Enviar al usuario interesado
+    }
+    
+}
+
 static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len) {
     switch (reason) {
         case LWS_CALLBACK_ESTABLISHED: {
@@ -126,9 +168,36 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
                     returnSingleUserToClient(wsi, userTofind);
                 }
                 case 3: {
+
                     break;
                 }
                 case 4: {
+                    if (len < 2) return 0;
+    
+                    // Obtener longitud del nombre del destinatario
+                    uint8_t dest_len = data[1];
+    
+                    // Verificar que haya suficientes datos para el nombre
+                    if (len < 2 + dest_len) return 0;
+    
+                    // Extraer nombre del destinatario
+                    string userToSend = "";
+                    for (int i = 2; i < 2 + dest_len; i++) {
+                        userToSend += char(data[i]);
+                    }
+    
+                    // Obtener longitud del mensaje (ubicada después del nombre)
+                    uint8_t msg_len = data[2 + dest_len];
+    
+                    // Verificar que haya suficientes datos para el mensaje
+                    if (len < 3 + dest_len + msg_len) return 0;
+    
+                    // Extraer contenido del mensaje
+                    string message_content = "";
+                    for (int i = 3 + dest_len; i < 3 + dest_len + msg_len; i++) {
+                        message_content += char(data[i]);
+                    }
+                    sendMessage(wsi,userToSend, message_content);
                     break;
                 }
                 case 5:{
