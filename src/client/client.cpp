@@ -1,5 +1,4 @@
-// src/client/client.cpp
-
+#include <algorithm>
 #include <FL/Fl.H>
 #include <FL/Fl_Window.H>
 #include <FL/Fl_Input.H>
@@ -13,24 +12,15 @@
 #include <FL/fl_ask.H>
 #include <FL/Fl_Pack.H>
 #include "network.h"
-#include "events.h"  
+#include "../client/events.h"
 
-
-
-// Declaración para refrescar la UI, será llamada desde network.cpp
 void refreshChatDisplay();
 
-// Declaración de un puntero global a la ventana de chat
-class ChatWindow;  // forward declaration
+class ChatWindow;
 ChatWindow* g_chatWindow = nullptr;
 
-
-// Forward declaration
 void show_chat_window(const std::string&, const std::string&, int);
 
-//
-// ==== LOGIN WINDOW ====
-//
 class LoginWindow : public Fl_Window {
     Fl_Input *user_in, *ip_in, *port_in;
     Fl_Button *connect_btn;
@@ -40,12 +30,11 @@ class LoginWindow : public Fl_Window {
         std::string user = win->user_in->value();
         std::string ip   = win->ip_in->value();
         int port = atoi(win->port_in->value());
-    
+
         if(user.empty() || ip.empty() || port <= 0) {
             fl_message("Por favor completa todos los campos correctamente.");
             return;
         }
-        // Intentar conectarse al servidor
         if (connectToServer(ip, port, user)) {
             startNetworkService();
             win->hide();
@@ -54,7 +43,6 @@ class LoginWindow : public Fl_Window {
             fl_message("No se pudo conectar al servidor. Inténtalo de nuevo.");
         }
     }
-    
 
 public:
     LoginWindow(): Fl_Window(300,180,"Conectar al Chat") {
@@ -69,9 +57,6 @@ public:
     }
 };
 
-//
-// ==== CHAT WINDOW ====
-//
 class ChatWindow : public Fl_Window {
     Fl_Text_Display *chat_disp;
     Fl_Text_Buffer *chat_buf;
@@ -90,72 +75,91 @@ class ChatWindow : public Fl_Window {
         ChatWindow* cw = (ChatWindow*)data;
         std::string msg = cw->msg_in->value();
         if (!msg.empty()) {
-            // Actualiza la UI de inmediato
-            cw->chat_buf->append(("Tú: " + msg + "\n").c_str());
+            cw->appendChatMessage("Tú: " + msg);
             cw->msg_in->value("");
-            
-            // Determinar el destinatario:
-            // Suponiendo que el primer elemento en el target_choice es "Chat general"
+
             std::string target;
             if (cw->target_choice->value() == 0) {
                 target = "~";
             } else {
-                // Si hay usuarios específicos en la lista, obtener el seleccionado
                 target = cw->user_list->text(cw->user_list->value());
             }
-            
-            // Empaquetar el mensaje según el protocolo:
+
             std::vector<uint8_t> dataToSend;
-            uint8_t targetLen = static_cast<uint8_t>(target.size());
-            dataToSend.push_back(targetLen);
+            dataToSend.push_back((uint8_t)target.size());
             dataToSend.insert(dataToSend.end(), target.begin(), target.end());
-            
-            uint8_t msgLen = static_cast<uint8_t>(msg.size());
-            dataToSend.push_back(msgLen);
+            dataToSend.push_back((uint8_t)msg.size());
             dataToSend.insert(dataToSend.end(), msg.begin(), msg.end());
-            
-            // Enviar el mensaje al servidor (usando, por ejemplo, el ID SEND_MESSAGE)
+
             sendMessageToServer(SEND_MESSAGE, dataToSend);
         }
     }
-    
+
+    static void on_list_users(Fl_Widget* w, void* data) {
+        sendMessageToServer(USER_LIST_REQUEST, {});
+    }
+
+    static void on_info(Fl_Widget* w, void* data) {
+        ChatWindow* cw = static_cast<ChatWindow*>(data);
+        int selected = cw->user_list->value();
+        if (selected < 1) {
+            fl_message("Selecciona un usuario de la lista.");
+            return;
+        }
+        std::string user = cw->user_list->text(selected);
+        std::vector<uint8_t> payload(user.begin(), user.end());
+        sendMessageToServer(GET_INFO, payload);
+    }
+
+    static void on_status_change(Fl_Widget* w, void* data) {
+        ChatWindow* cw = static_cast<ChatWindow*>(data);
+        int selected = cw->status_choice->value();
+        std::vector<uint8_t> payload = {static_cast<uint8_t>(selected)};
+        sendMessageToServer(SET_STATUS, payload);
+    }
+
+    static void on_history(Fl_Widget* w, void* data) {
+        ChatWindow* cw = static_cast<ChatWindow*>(data);
+        int selected = cw->user_list->value();
+        if (selected < 1) {
+            fl_message("Selecciona un usuario para ver historial.");
+            return;
+        }
+        std::string user = cw->user_list->text(selected);
+        std::vector<uint8_t> payload(user.begin(), user.end());
+        sendMessageToServer(GET_HISTORY, payload);
+    }
 
 public:
     ChatWindow(const std::string &user, const std::string &ip, int port)
     : Fl_Window(600,650,"ChatEZ") {
         size_range(600,650);
 
-        // Cabecera
         info_label = new Fl_Box(10,10,580,20,
             ("Usuario: " + user + " | Servidor: " + ip + ":" + std::to_string(port)).c_str());
 
-        // ─── TOP GROUP (historial + panel derecho) ───────────────────
         Fl_Group* top = new Fl_Group(0, 0, 600, 610);
-
-            // Historial (izquierda)
             chat_buf = new Fl_Text_Buffer;
             chat_disp = new Fl_Text_Display(10,40,400,280);
             chat_disp->buffer(chat_buf);
 
-            // Panel derecho
             right = new Fl_Pack(420,40,160,280);
             right->type(Fl_Pack::VERTICAL);
             right->spacing(5);
                 new Fl_Box(0,0,160,20,"Usuarios Conectados:");
-                user_list = new Fl_Browser(0,0,160,120);
+                user_list = new Fl_Browser(0,0,160,100);
                 list_btn = new Fl_Button(0,0,160,30,"Listar Usuarios");
                 info_input = new Fl_Input(0,0,160,25);
                 info_btn = new Fl_Button(0,0,160,30,"Ver Info");
+                Fl_Button* history_btn = new Fl_Button(0,0,160,30,"Ver Historial");
                 new Fl_Box(0,0,160,20,"Estado:");
                 status_choice = new Fl_Choice(0,0,160,30);
                 status_choice->add("Activo|Ocupado|Inactivo");
                 status_choice->value(0);
             right->end();
-
         top->end();
         resizable(top);
 
-        // ─── BOTTOM GROUP (fila de envío) ───────────────────────────
         Fl_Group* bottom = new Fl_Group(0, 610, 600, 40);
             target_choice = new Fl_Choice(10,615,150,25,"Para:");
             target_choice->add("Chat general");
@@ -164,36 +168,41 @@ public:
             send_btn->align(FL_ALIGN_CENTER);
         bottom->end();
 
-        // Callbacks vacíos
-        list_btn->callback([](Fl_Widget*, void*){});
-        info_btn->callback([](Fl_Widget*, void*){});
-        send_btn->callback(on_send,this);
+        send_btn->callback(on_send, this);
+        list_btn->callback(on_list_users, this);
+        info_btn->callback(on_info, this);
+        history_btn->callback(on_history, this);
+        status_choice->callback(on_status_change, this);
 
         end();
     }
 
-    // Método público para actualizar el chat display
-    void updateChatDisplay(const std::string &text) {
-        chat_buf->text(text.c_str());
+    void appendChatMessage(const std::string &msg) {
+        chat_buf->append((msg + "\n").c_str());
     }
 
+    void updateUserList(const std::vector<std::string>& users) {
+        user_list->clear();
+        target_choice->clear();
+        target_choice->add("Chat general");
+
+        for (const std::string& name : users) {
+            user_list->add(name.c_str());
+            target_choice->add(name.c_str());
+        }
+    }
 };
 
 void show_chat_window(const std::string &user, const std::string &ip, int port) {
     ChatWindow *cw = new ChatWindow(user, ip, port);
+    g_chatWindow = cw;
     cw->show();
 }
 
-
-// Implementación de refreshChatDisplay, llamada desde network.cpp a través de Fl::awake
 void refreshChatDisplay() {
-    if (g_chatWindow) {
-        std::string allMessages;
-        // Utiliza chatHistory (de la capa de red) para construir el contenido
-        for (const auto &msg : chatHistory) {
-            allMessages += msg + "\n";
-        }
-        g_chatWindow->updateChatDisplay(allMessages);
+    if (g_chatWindow && !chatHistory.empty()) {
+        g_chatWindow->appendChatMessage(chatHistory.back());
+        g_chatWindow->updateUserList(userList);
     }
 }
 

@@ -1,5 +1,5 @@
 #include "network.h"
-#include "events.h"  // Define MESSAGE_RECEIVED, etc.
+#include "../client/events.h"
 #include <libwebsockets.h>
 #include <thread>
 #include <mutex>
@@ -8,19 +8,17 @@
 #include <vector>
 #include <FL/Fl.H>
 
-// Variables globales internas para la conexión
 static struct lws_context* g_context = nullptr;
 static struct lws* g_client_wsi = nullptr;
 static std::thread g_serviceThread;
 static bool g_running = false;
 static std::mutex g_mutex;
 
-// Variables globales declaradas en network.h
 std::vector<std::string> userList;
-std::vector<std::string> chatHistory;
 std::string errorMessage;
 
-// Callback del cliente para manejar los eventos de la conexión
+extern void refreshChatDisplay();
+
 static int callback_client(struct lws *wsi, enum lws_callback_reasons reason,
                            void *user, void *in, size_t len) {
     switch (reason) {
@@ -32,8 +30,11 @@ static int callback_client(struct lws *wsi, enum lws_callback_reasons reason,
             uint8_t* received = static_cast<uint8_t*>(in);
             uint8_t msgType = received[0];
             uint8_t dataSize = received[1];
+
+            if (len < static_cast<size_t>(2 + dataSize)) break;
             std::vector<uint8_t> data(received + 2, received + 2 + dataSize);
-            std::cout << "Debug: Received message of type " << (int)msgType << " from server." << std::endl;
+
+            std::cout << "Debug: Received message of type " << (int)msgType << std::endl;
             handleServerMessage(msgType, data);
             break;
         }
@@ -51,58 +52,50 @@ static int callback_client(struct lws *wsi, enum lws_callback_reasons reason,
     return 0;
 }
 
-// Arreglo de protocolos para el cliente (debe coincidir el nombre con el del servidor)
 static struct lws_protocols protocols[] = {
     {
         "ws-protocol",
         callback_client,
         0,
         1024,
-        0,          // id
-        nullptr,    // user
-        0           // tx_packet_size
+        0,
+        nullptr,
+        0
     },
     { NULL, NULL, 0, 0, 0, nullptr, 0 }
 };
 
 bool connectToServer(const std::string &ip, int port, const std::string &username) {
-    std::cout << "Debug: Attempting connection to " << ip << ":" << port 
+    std::cout << "Debug: Attempting connection to " << ip << ":" << port
               << " with username: " << username << std::endl;
-    
-    // Crear contexto sin escuchar (cliente)
+
     struct lws_context_creation_info info;
     memset(&info, 0, sizeof(info));
     info.port = CONTEXT_PORT_NO_LISTEN;
     info.protocols = protocols;
-    
+
     g_context = lws_create_context(&info);
     if (!g_context) {
         std::cerr << "Error: Failed to create WebSocket context." << std::endl;
         return false;
     }
-    
-    // Configurar la conexión del cliente
+
     struct lws_client_connect_info ccinfo;
     memset(&ccinfo, 0, sizeof(ccinfo));
     ccinfo.context  = g_context;
     ccinfo.address  = ip.c_str();
     ccinfo.port     = port;
-    
-    // Construir la URL con el parámetro "name"
+
     std::string path = "/?name=" + username;
     ccinfo.path     = path.c_str();
-    
+
     ccinfo.host     = lws_canonical_hostname(g_context);
     ccinfo.origin   = "origin";
     ccinfo.protocol = protocols[0].name;
-    ccinfo.ssl_connection = 0; // Sin SSL
+    ccinfo.ssl_connection = 0;
 
     g_client_wsi = lws_client_connect_via_info(&ccinfo);
-    if (!g_client_wsi) {
-        std::cerr << "Error: Could not connect to server." << std::endl;
-        return false;
-    }
-    return true;
+    return g_client_wsi != nullptr;
 }
 
 void startNetworkService() {
@@ -119,17 +112,17 @@ void sendMessageToServer(uint8_t messageType, const std::vector<uint8_t> &data) 
         std::cerr << "Error: No active connection to server." << std::endl;
         return;
     }
-    // Construir el mensaje: [messageType][dataSize][data...]
+
     std::vector<uint8_t> buffer;
     buffer.push_back(messageType);
     buffer.push_back(static_cast<uint8_t>(data.size()));
     buffer.insert(buffer.end(), data.begin(), data.end());
-    
+
     size_t totalSize = LWS_PRE + buffer.size();
     unsigned char* buf = new unsigned char[totalSize];
     memset(buf, 0, LWS_PRE);
     memcpy(buf + LWS_PRE, buffer.data(), buffer.size());
-    
+
     int n = lws_write(g_client_wsi, buf + LWS_PRE, buffer.size(), LWS_WRITE_BINARY);
     if(n < (int)buffer.size()) {
         std::cerr << "Error: Could not send full message." << std::endl;
@@ -137,20 +130,60 @@ void sendMessageToServer(uint8_t messageType, const std::vector<uint8_t> &data) 
     delete[] buf;
 }
 
-// Declaración de un callback que actualiza la UI (defínelo en client.cpp o en otro módulo compartido)
-extern void refreshChatDisplay();
-
 void handleServerMessage(uint8_t messageType, const std::vector<uint8_t> &data) {
     if (messageType == MESSAGE_RECEIVED) {
         std::string msg(data.begin(), data.end());
         chatHistory.push_back(msg);
-        std::cout << "Debug: New message received: " << msg << std::endl;
-        // Notificar a la UI para que se actualice:
-        Fl::awake([](void*){
-            refreshChatDisplay();
-        });
-    } else {
-        std::cout << "Debug: Received unknown message type: " << (int)messageType << std::endl;
+        Fl::awake([](void*){ refreshChatDisplay(); });
+    }
+    else if (messageType == USER_LIST_RESPONSE) {
+        userList.clear();
+        size_t i = 0;
+        if (data.size() < 1) return;
+
+        uint8_t userCount = data[i++];
+        for (int u = 0; u < userCount && i < data.size(); ++u) {
+            if (i >= data.size()) break;
+            uint8_t nameLen = data[i++];
+            if (i + nameLen > data.size()) break;
+            std::string username(data.begin() + i, data.begin() + i + nameLen);
+            i += nameLen;
+
+            if (i < data.size()) i++; // skip status
+            userList.push_back(username);
+        }
+
+        Fl::awake([](void*){ refreshChatDisplay(); });
+    }
+    else if (messageType == HISTORY_RESPONSE) {
+        std::string full;
+        size_t i = 0;
+        if (data.size() < 1) return;
+
+        uint8_t count = data[i++];
+        for (int m = 0; m < count && i < data.size(); ++m) {
+            if (i >= data.size()) break;
+            uint8_t len = data[i++];
+            if (i + len > data.size()) break;
+            std::string msg(data.begin() + i, data.begin() + i + len);
+            i += len;
+            full += msg + "\n";
+        }
+        chatHistory.push_back("Historial recibido:\n" + full);
+        Fl::awake([](void*){ refreshChatDisplay(); });
+    }
+    else if (messageType == INFO_RESPONSE) {
+        std::string info(data.begin(), data.end());
+        chatHistory.push_back("Info: " + info);
+        Fl::awake([](void*){ refreshChatDisplay(); });
+    }
+    else if (messageType == ERROR_MSG) {
+        std::string msg(data.begin(), data.end());
+        chatHistory.push_back("Error: " + msg);
+        Fl::awake([](void*){ refreshChatDisplay(); });
+    }
+    else {
+        std::cout << "Debug: Unknown message type: " << (int)messageType << std::endl;
     }
 }
 

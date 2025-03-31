@@ -5,42 +5,58 @@
 #include <vector>
 #include "DataSource.h"
 #include "messages.h"
-#include "events.h"
+#include "handlers.h"
+#include "../server/events.h"
 using namespace std;
-
 
 const int PORT = 9000;
 DataSource sourceoftruth;
 unsigned char message_buffer[LWS_PRE + 1024];
+
+// Devuelve lista de usuarios conectados
 void returnUsersToClient(struct lws *wsi) {
     auto users = sourceoftruth.getConnectedUsers();
     
-    // Preparar buffer para la respuesta
     unsigned char *buffer = message_buffer + LWS_PRE;
-    
-    // Tipo de mensaje: USER_LIST_RESPONSE (51)
     buffer[0] = USER_LIST_RESPONSE;
-    
-    // Número de usuarios
     buffer[1] = static_cast<unsigned char>(users.size());
-    
+
     size_t offset = 2;
     for (const auto& user : users) {
-        // Longitud del nombre
         buffer[offset++] = static_cast<unsigned char>(user.username.length());
-        
-        // Nombre de usuario
         memcpy(buffer + offset, user.username.c_str(), user.username.length());
         offset += user.username.length();
-        
-        // Estado del usuario
         buffer[offset++] = static_cast<unsigned char>(user.status);
     }
     
-    // Enviar respuesta
     lws_write(wsi, buffer, offset, LWS_WRITE_BINARY);
 }
 
+// Actualiza el estado del usuario
+void updateUserStatus(struct lws* wsi, uint8_t status) {
+    std::lock_guard<std::mutex> lock(clients_mutex);
+    for (auto& [username, client] : clients) {
+        if (client.wsi == wsi) {
+            client.status = status;
+            break;
+        }
+    }
+}
+
+// Maneja solicitud de info de otro usuario
+void handleGetInfo(struct lws* wsi, const std::vector<uint8_t>& data) {
+    std::string target(data.begin(), data.end());
+
+    std::lock_guard<std::mutex> lock(clients_mutex);
+    auto it = clients.find(target);
+    if (it != clients.end()) {
+        const Client& c = it->second;
+        std::string info = "Usuario: " + c.username + " | Estado: " + std::to_string(c.status);
+        sendBinaryMessage(wsi, INFO_RESPONSE, std::vector<uint8_t>(info.begin(), info.end()));
+    } else {
+        sendBinaryMessage(wsi, ERROR_MSG, {'U','s','e','r',' ','n','o','t',' ','f','o','u','n','d'});
+    }
+}
 
 static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len) {
     switch (reason) {
@@ -64,8 +80,7 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
             bool isConnectionValid = sourceoftruth.insert_user(wsi, realUser, ip_address, 1); // Estado por defecto: Activo
             if (isConnectionValid) {
                 std::cout << "User " << realUser << " conectado exitosamente" << std::endl;
-            }
-            else {
+            } else {
                 std::cout << "Rejecting connection from " << rawUsername 
                           << " (invalid or duplicate username)" << std::endl;
                 lws_close_reason(wsi, LWS_CLOSE_STATUS_GOINGAWAY, 
@@ -75,39 +90,43 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
             break;
         }        
         case LWS_CALLBACK_RECEIVE: {
-
             if (len < 1) return 0;
 
-            unsigned char *data = (unsigned char*)in; //Obtener el array que envía el cliente
+            unsigned char *data = (unsigned char*)in;
             uint8_t messagetype = data[0];
+            std::vector<uint8_t> payload(data + 1, data + len);
 
-            switch(messagetype) {
-                case 1: {
+            switch (messagetype) {
+                case USER_LIST_REQUEST:
                     returnUsersToClient(wsi);
-                    break;  // Evita fall-through
-                }
-                case 2: {
                     break;
-                }
-                case 3: {
+
+                case GET_INFO:
+                    handleGetInfo(wsi, payload);
                     break;
-                }
-                case 4: {
-                    // Para un mensaje de envío, construimos un vector con la carga útil (excluyendo el tipo)
-                    std::vector<uint8_t> payload(data + 1, data + len);
-                    // Llamamos a handleSendMessage (definida en messages.cpp) para procesarlo
+
+                case GET_HISTORY:
+                    handleGetMessageHistory(wsi, payload);
+                    break;
+
+                case SEND_MESSAGE:
                     handleSendMessage(wsi, payload);
                     break;
-                }
-                case 5: {
+
+                case SET_STATUS:
+                    if (!payload.empty()) {
+                        uint8_t status = payload[0];
+                        updateUserStatus(wsi, status);
+                        std::cout << "DEBUG: Estado actualizado a " << (int)status << std::endl;
+                    }
                     break;
-                }
+
                 default:
+                    std::cout << "DEBUG: Tipo de mensaje desconocido: " << (int)messagetype << std::endl;
                     break;
             }
             break;
         }
-
     }   
     return 0;
 }
@@ -124,7 +143,6 @@ void startServer(int port) {
     info.port = port;
     info.protocols = protocols;
     info.options = LWS_SERVER_OPTION_HTTP_HEADERS_SECURITY_BEST_PRACTICES_ENFORCE;
-    
 
     struct lws_context *context = lws_create_context(&info);
     if (!context) {

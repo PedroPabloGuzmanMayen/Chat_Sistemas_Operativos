@@ -1,6 +1,6 @@
 #include "messages.h"
 #include "handlers.h"
-#include "events.h"
+#include "../server/events.h"
 #include <iostream>
 #include <mutex>
 #include <map>
@@ -37,30 +37,48 @@ void handleListUsers(struct lws *wsi) {
 /**
  * Maneja el envío de mensajes entre usuarios
  */
-void handleSendMessage(struct lws *wsi, const std::vector<uint8_t> &data) {
-    size_t separator = data[0];
-    std::string targetUser(data.begin(), data.begin() + separator);
-    std::string message(data.begin() + separator, data.end());
-    
-    std::lock_guard<std::mutex> lock(clients_mutex);
-    if (targetUser == "~") { // Chat general: enviar a todos los clientes conectados
-        for (const auto &pair : clients) {
-            sendBinaryMessage(pair.second.wsi, MESSAGE_RECEIVED, std::vector<uint8_t>(message.begin(), message.end()));
+void handleSendMessage(struct lws* senderWsi, const std::vector<uint8_t>& data) {
+    if (data.size() < 2) return;
+
+    uint8_t targetLen = data[0];
+    if (data.size() < 1 + targetLen + 1) return;
+
+    std::string target(data.begin() + 1, data.begin() + 1 + targetLen);
+    uint8_t msgLen = data[1 + targetLen];
+    std::string message(data.begin() + 1 + targetLen + 1, data.end());
+
+    std::cout << "DEBUG: Received target = '" << target << "' (" << (int)targetLen << " bytes)" << std::endl;
+
+    // Normalizar target por si trae basura o caracteres invisibles
+    if (target.find('~') != std::string::npos && target.length() == 1) {
+        target = "~";
+    }
+
+    std::string senderName = get_username(senderWsi);
+    std::string fullMessage = senderName + ": " + message;
+
+    // Guardar el mensaje para el historial
+    storeMessage(senderName, fullMessage);
+
+    // Si el mensaje es para el chat general (~), lo enviamos a todos
+    if (target == "~") {
+        std::cout << "DEBUG: Broadcasting to all users\n";
+        for (const auto& [user, client] : clients) {
+            std::cout << "Sending to: " << user << "\n";
+            sendBinaryMessage(client.wsi, MESSAGE_RECEIVED, std::vector<uint8_t>(fullMessage.begin(), fullMessage.end()));
         }
-        // También puedes almacenar el mensaje en un historial global si es necesario.
-        storeMessage("~", message);
     } else {
-        // Mensaje directo
-        if (clients.find(targetUser) != clients.end()) {
-            storeMessage(targetUser, message); // Guardar en historial
-            sendBinaryMessage(clients[targetUser].wsi, MESSAGE_RECEIVED, std::vector<uint8_t>(message.begin(), message.end()));
+        // Mensaje directo a un usuario específico
+        auto it = clients.find(target);
+        if (it != clients.end()) {
+            std::cout << "DEBUG: Sending direct message to " << target << std::endl;
+            sendBinaryMessage(it->second.wsi, MESSAGE_RECEIVED, std::vector<uint8_t>(fullMessage.begin(), fullMessage.end()));
         } else {
-            // Enviar error: usuario no encontrado (código de error 4)
-            sendBinaryMessage(wsi, ERROR_MSG, {4});
+            std::cout << "DEBUG: User not found: " << target << std::endl;
+            sendBinaryMessage(senderWsi, ERROR_MSG, {'U','s','e','r',' ','n','o','t',' ','f','o','u','n','d'});
         }
     }
 }
-
 
 /**
  * Envía el historial de mensajes a un usuario que lo solicita
