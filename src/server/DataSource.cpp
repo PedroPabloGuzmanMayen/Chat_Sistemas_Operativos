@@ -56,6 +56,10 @@ struct ChatMessage {
     std::string content;
 };
 
+bool isValidUserStatus(int value) {
+    return value == DISCONNECTED || value == ACTIVE || value == BUSY || value == INACTIVE;
+}
+
 class DataSource {
     private:
         unordered_map<lws*, User> users; // Nos ayuda a asociar una sesión con un usuario
