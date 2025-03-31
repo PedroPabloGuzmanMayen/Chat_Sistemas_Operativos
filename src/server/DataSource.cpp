@@ -60,7 +60,7 @@ class DataSource {
     private:
         unordered_map<lws*, User> users; // Nos ayuda a asociar una sesión con un usuario
         vector<ChatMessage> generalChat; //Vector que contiene los mensajes del chat general
-        map<unordered_set<string>, vector<ChatMessage>> privateChats;
+        map<string, vector<ChatMessage>> privateChats;
 
     public:
         vector<string> getUsernames() {
@@ -105,4 +105,36 @@ class DataSource {
             }
             return nullptr;
         }
+
+        void changeStatus(struct lws *wsi, int newStatus) { //Función para cambiar el status de un usuario
+            users[wsi].status = newStatus;
+        }
+
+        void insertMessage(struct lws *wsi, string reciever, string messageContent){
+            string senderName = users[wsi].username;
+            if (reciever == "~"){
+                generalChat.push_back({senderName, reciever, messageContent}); //Insertar el nuevo mensaje
+            }
+            else {
+                string chatKey = (senderName < reciever) ? senderName + ":" + reciever : reciever + ":" + senderName; //Generar llava única para el chat privado
+                privateChats[chatKey].push_back({senderName, reciever, messageContent}); //Insertar mensaje en la conversación privada
+            }
+        }
+        lws* get_wsi_by_username(const std::string& username) { //Busca el wsi de un user
+            for (const auto& pair : users) {
+                if (pair.second.username == username) {
+                    return pair.first; 
+                }
+            }
+            return nullptr;
+        }
+        User* get_user_by_wsi(struct lws *wsi) {
+            //Iterar hasta encontrar el usuario que buscamos
+            for (auto& pair : users) {
+                if (pair.first == wsi) {
+                    return &(pair.second);
+                }
+            }
+            return nullptr;
+        } 
 };
