@@ -95,4 +95,14 @@ class DataSource {
             }
             return connected;
         }
+        //Función para hallar un usuario
+        User* get_user(const std::string& username) {
+            //Iterar hasta encontrar el usuario que buscamos
+            for (auto& pair : users) {
+                if (pair.second.username == username) {
+                    return &(pair.second);
+                }
+            }
+            return nullptr;
+        }
 };
