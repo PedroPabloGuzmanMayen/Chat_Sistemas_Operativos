@@ -97,8 +97,8 @@ void sendMessage(struct lws *wsi, string reciever, string content){
     buffer[1] = static_cast<unsigned char>(sender->username.length());
     memcpy(buffer + 2, sender->username.c_str(), sender->username.length());
     buffer[2+sender->username.length()] = static_cast<unsigned char>(content.length()); //Len del mensaje
-    memcpy(buffer + 3 +sender->username.length(), content.c_str(), content.length()); // Contenido del mensaje
-    size_t total_length = 2 + sender->username.length() + content.length();
+    memcpy(buffer + 3 +sender->username.length(), content.c_str(), content.length() +1); // Contenido del mensaje
+    size_t total_length = 2 + sender->username.length() + content.length() +1;
     if (reciever == "~"){
         auto connectedUsers = sourceoftruth.getConnectedUsers();
         for (const auto& user : connectedUsers) {
