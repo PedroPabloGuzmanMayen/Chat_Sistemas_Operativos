@@ -12,6 +12,18 @@
 #include <FL/Fl_Box.H>
 #include <FL/fl_ask.H>
 #include <FL/Fl_Pack.H>
+#include "network.h"
+#include "events.h"  
+
+
+
+// Declaración para refrescar la UI, será llamada desde network.cpp
+void refreshChatDisplay();
+
+// Declaración de un puntero global a la ventana de chat
+class ChatWindow;  // forward declaration
+ChatWindow* g_chatWindow = nullptr;
+
 
 // Forward declaration
 void show_chat_window(const std::string&, const std::string&, int);
@@ -28,22 +40,29 @@ class LoginWindow : public Fl_Window {
         std::string user = win->user_in->value();
         std::string ip   = win->ip_in->value();
         int port = atoi(win->port_in->value());
-
+    
         if(user.empty() || ip.empty() || port <= 0) {
             fl_message("Por favor completa todos los campos correctamente.");
             return;
         }
-        win->hide();
-        show_chat_window(user, ip, port);
+        // Intentar conectarse al servidor
+        if (connectToServer(ip, port, user)) {
+            startNetworkService();
+            win->hide();
+            show_chat_window(user, ip, port);
+        } else {
+            fl_message("No se pudo conectar al servidor. Inténtalo de nuevo.");
+        }
     }
+    
 
 public:
     LoginWindow(): Fl_Window(300,180,"Conectar al Chat") {
         user_in = new Fl_Input(100,20,180,25,"Usuario:");
         ip_in   = new Fl_Input(100,60,180,25,"IP Servidor:");
-        ip_in->value("3.22.206.194");
+        ip_in->value("127.0.0.1");
         port_in = new Fl_Input(100,100,180,25,"Puerto:");
-        port_in->value("8080");
+        port_in->value("9000");
         connect_btn = new Fl_Button(100,140,100,30,"Conectar");
         connect_btn->callback(on_connect,this);
         end();
@@ -70,12 +89,36 @@ class ChatWindow : public Fl_Window {
     static void on_send(Fl_Widget* w, void* data) {
         ChatWindow* cw = (ChatWindow*)data;
         std::string msg = cw->msg_in->value();
-        if(!msg.empty()) {
+        if (!msg.empty()) {
+            // Actualiza la UI de inmediato
             cw->chat_buf->append(("Tú: " + msg + "\n").c_str());
             cw->msg_in->value("");
-            // TODO: enviar mensaje al servidor
+            
+            // Determinar el destinatario:
+            // Suponiendo que el primer elemento en el target_choice es "Chat general"
+            std::string target;
+            if (cw->target_choice->value() == 0) {
+                target = "~";
+            } else {
+                // Si hay usuarios específicos en la lista, obtener el seleccionado
+                target = cw->user_list->text(cw->user_list->value());
+            }
+            
+            // Empaquetar el mensaje según el protocolo:
+            std::vector<uint8_t> dataToSend;
+            uint8_t targetLen = static_cast<uint8_t>(target.size());
+            dataToSend.push_back(targetLen);
+            dataToSend.insert(dataToSend.end(), target.begin(), target.end());
+            
+            uint8_t msgLen = static_cast<uint8_t>(msg.size());
+            dataToSend.push_back(msgLen);
+            dataToSend.insert(dataToSend.end(), msg.begin(), msg.end());
+            
+            // Enviar el mensaje al servidor (usando, por ejemplo, el ID SEND_MESSAGE)
+            sendMessageToServer(SEND_MESSAGE, dataToSend);
         }
     }
+    
 
 public:
     ChatWindow(const std::string &user, const std::string &ip, int port)
@@ -129,11 +172,29 @@ public:
         end();
     }
 
+    // Método público para actualizar el chat display
+    void updateChatDisplay(const std::string &text) {
+        chat_buf->text(text.c_str());
+    }
+
 };
 
 void show_chat_window(const std::string &user, const std::string &ip, int port) {
     ChatWindow *cw = new ChatWindow(user, ip, port);
     cw->show();
+}
+
+
+// Implementación de refreshChatDisplay, llamada desde network.cpp a través de Fl::awake
+void refreshChatDisplay() {
+    if (g_chatWindow) {
+        std::string allMessages;
+        // Utiliza chatHistory (de la capa de red) para construir el contenido
+        for (const auto &msg : chatHistory) {
+            allMessages += msg + "\n";
+        }
+        g_chatWindow->updateChatDisplay(allMessages);
+    }
 }
 
 int main(int argc, char **argv) {
