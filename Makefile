@@ -2,7 +2,7 @@ CXX        := g++
 CXXFLAGS   := -std=c++17 -Wall -Wextra -Iinclude
 
 # FLTK para cliente
-CLIENT_LDFLAGS := -lfltk -lfltk_images -lfltk_forms -lfltk_gl
+CLIENT_LDFLAGS := -lfltk -lfltk_images -lfltk_forms -lfltk_gl -lwebsockets
 
 # libwebsockets para servidor
 SERVER_LDFLAGS := -lwebsockets
