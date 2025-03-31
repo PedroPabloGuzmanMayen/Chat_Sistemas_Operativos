@@ -83,7 +83,6 @@ void changeUserStatus(struct lws *wsi) { //Función para cambiar el estado de un
 }
 
 void sendMessage(struct lws *wsi, string reciever, string content){
-    unsigned char *buffer = message_buffer + LWS_PRE;
     struct lws* receiverWsi = sourceoftruth. get_wsi_by_username(reciever);
     User* sender = sourceoftruth.get_user_by_wsi(wsi);
     if (!receiverWsi && !sender){
