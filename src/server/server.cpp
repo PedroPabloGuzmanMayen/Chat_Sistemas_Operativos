@@ -3,7 +3,9 @@
 #include <iostream>
 #include <unordered_map>
 #include <vector>
-#include "DataSource.cpp"
+#include "DataSource.h"
+#include "messages.h"
+#include "events.h"
 using namespace std;
 
 
@@ -43,34 +45,35 @@ void returnUsersToClient(struct lws *wsi) {
 static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len) {
     switch (reason) {
         case LWS_CALLBACK_ESTABLISHED: {
-            char rawUsername[50] = {0}; //Creamos esta variable para almacenar el username del usuario conectado
-            char *query_string = (char *)lws_get_urlarg_by_name(wsi, "name=", rawUsername, sizeof(rawUsername)); //Obtenemos el username de la sesión del usuario
-            std::string username = std::string(rawUsername);
-            string realUser = "";
-            for (int i = 0; i<username.length(); i++){
-                if (i == username.length()-8){
-                    break;
-                }
-                else {
-                    realUser += username[i];  
-                }
+            char rawUsername[50] = {0};
+            lws_get_urlarg_by_name(wsi, "name", rawUsername, sizeof(rawUsername));
+            std::cout << "DEBUG: rawUsername = '" << rawUsername 
+                      << "', longitud = " << strlen(rawUsername) << std::endl;
+            
+            std::string realUser;
+            const char *prefix = "name=";
+            if (strncmp(rawUsername, prefix, strlen(prefix)) == 0) {
+                realUser = std::string(rawUsername + strlen(prefix));
+            } else {
+                realUser = std::string(rawUsername);
             }
+            
             char ip_address[100] = {0};
             char hostname[100] = {0};
             lws_get_peer_addresses(wsi, -1, hostname, sizeof(hostname), ip_address, sizeof(ip_address));
-            bool isConnectionValid = sourceoftruth.insert_user(wsi, realUser, ip_address, 1); //Estado por defecto: Activo
+            bool isConnectionValid = sourceoftruth.insert_user(wsi, realUser, ip_address, 1); // Estado por defecto: Activo
             if (isConnectionValid) {
-                std::cout << "User " << realUser << "conectado exitosamente" << std::endl;
+                std::cout << "User " << realUser << " conectado exitosamente" << std::endl;
             }
             else {
-                //Rechazar la solictud si la conexión es
-                std::cout << "Rejecting connection from " << rawUsername << " (invalid or duplicate username)" << std::endl;
-                lws_close_reason(wsi, LWS_CLOSE_STATUS_GOINGAWAY, (unsigned char*)"Invalid username", strlen("Invalid username"));
+                std::cout << "Rejecting connection from " << rawUsername 
+                          << " (invalid or duplicate username)" << std::endl;
+                lws_close_reason(wsi, LWS_CLOSE_STATUS_GOINGAWAY, 
+                                 (unsigned char*)"Invalid username", strlen("Invalid username"));
                 return -1;
             }
-
             break;
-        }
+        }        
         case LWS_CALLBACK_RECEIVE: {
 
             if (len < 1) return 0;
@@ -78,9 +81,10 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
             unsigned char *data = (unsigned char*)in; //Obtener el array que envía el cliente
             uint8_t messagetype = data[0];
 
-            switch(messagetype){
+            switch(messagetype) {
                 case 1: {
                     returnUsersToClient(wsi);
+                    break;  // Evita fall-through
                 }
                 case 2: {
                     break;
@@ -89,19 +93,25 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
                     break;
                 }
                 case 4: {
+                    // Para un mensaje de envío, construimos un vector con la carga útil (excluyendo el tipo)
+                    std::vector<uint8_t> payload(data + 1, data + len);
+                    // Llamamos a handleSendMessage (definida en messages.cpp) para procesarlo
+                    handleSendMessage(wsi, payload);
                     break;
                 }
-                case 5:{
+                case 5: {
                     break;
                 }
+                default:
+                    break;
             }
-
-
+            break;
         }
 
     }   
     return 0;
 }
+
 static struct lws_protocols protocols[] = {
     {"ws-protocol", ws_callback, 0, 1024}, 
     {NULL, NULL, 0, 0}

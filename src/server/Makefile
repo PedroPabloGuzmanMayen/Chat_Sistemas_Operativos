@@ -1,12 +1,12 @@
 CC = g++
-CFLAGS = -std=c++17 -Wall -Wextra -g
+CFLAGS = -std=c++17 -Wall -Wextra -g -I../../include
 LDFLAGS = -lwebsockets
 
 # Nombre del ejecutable final
 TARGET = websocket_server
 
 # Archivos fuente
-SOURCES = server.cpp DataSource.cpp
+SOURCES = server.cpp DataSource.cpp messages.cpp handlers.cpp
 
 # Convertir archivos fuente a archivos objeto
 OBJECTS = $(SOURCES:.cpp=.o)
