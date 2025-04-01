@@ -9,11 +9,6 @@
 
 using namespace std;
 
-
-bool isValidUserStatus(int value) {
-    return value == DISCONNECTED || value == ACTIVE || value == BUSY || value == INACTIVE;
-}
-
 struct User {
     string username;
     string ip_addr;
