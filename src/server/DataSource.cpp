@@ -139,4 +139,18 @@ class DataSource {
             }
             return nullptr;
         } 
+
+        vector<ChatMessage> getChatHistory(string name){
+            if(name == "~"){
+                return generalChat;
+            }
+            else {
+                if (privateChats.find(name) != privateChats.end()) {
+                    return privateChats[name];
+                } else {
+                    // Si no existe, devolver un vector vacío
+                    return vector<ChatMessage>();
+                }
+            }
+        }
 };
