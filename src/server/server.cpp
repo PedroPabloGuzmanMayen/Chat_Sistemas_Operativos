@@ -149,6 +149,36 @@ void sendMessage(struct lws *wsi, string reciever, string content){
     
 }
 
+void sendMessageHistory(struct lws *wsi, string nameChat) {
+    vector<ChatMessage> messages_to_send = sourceoftruth.getChatHistory(nameChat);
+    if (messages_to_send.size() > 0){
+        unsigned char *buffer = message_buffer + LWS_PRE;
+        int pos = 0;
+        buffer[pos] = CHAT_HISTORY_RESPONSE;
+        buffer[pos++] = messages_to_send.size();
+        for (const auto& pair : messages_to_send){
+            buffer[pos++] = pair.sender.length();
+            // Nombre del remitente
+            memcpy(buffer + pos, pair.sender.c_str(), pair.sender.length());
+            pos += pair.sender.length();
+            // Longitud del contenido del mensaje
+            buffer[pos++] = pair.content.length();  
+            // Contenido del mensaje
+            memcpy(buffer + pos, pair.content.c_str(), pair.content.length());
+            pos += pair.content.length();
+        }
+        lws_write(wsi, buffer, pos, LWS_WRITE_BINARY);
+    }
+    else {
+        unsigned char *buffer = message_buffer + LWS_PRE;
+        buffer[0] = ERROR;
+        buffer[1] = USER_NOT_FOUND;
+        lws_write(wsi, buffer, 2, LWS_WRITE_BINARY);
+    }
+}
+
+
+
 static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len) {
     switch (reason) {
         case LWS_CALLBACK_ESTABLISHED: {
@@ -169,6 +199,7 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
             lws_get_peer_addresses(wsi, -1, hostname, sizeof(hostname), ip_address, sizeof(ip_address));
             bool isConnectionValid = sourceoftruth.insert_user(wsi, realUser, ip_address, 1); //Estado por defecto: Activo
             if (isConnectionValid) {
+                changeUserStatus(wsi, 0);
                 std::cout << "User " << realUser << "conectado exitosamente" << std::endl;
             }
             else {
@@ -235,6 +266,11 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
                     break;
                 }
                 case 5:{
+                    string chatName = "";
+                    for (int i = 2; i < data[1] +2; i++){
+                        chatName += char(data[i]);
+                    }
+                    sendMessageHistory(wsi, chatName);
                     break;
                 }
             }
