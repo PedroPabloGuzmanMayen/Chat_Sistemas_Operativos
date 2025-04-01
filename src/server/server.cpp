@@ -187,6 +187,7 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
             switch(messagetype){
                 case 1: { //Caso 1: listar usuarios
                     returnUsersToClient(wsi);
+                    break;
                 }
                 case 2: { //Caso 2: 
                     string userTofind = ""; //Castear el contenido del array
@@ -195,6 +196,7 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
                     }
                     cout << "username: " << userTofind << "\n" << endl;
                     returnSingleUserToClient(wsi, userTofind);
+                    break;
                 }
                 case 3: {
                     changeUserStatus(wsi, data[len-1]);
