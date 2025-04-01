@@ -6,6 +6,8 @@
 #include <set>
 #include <map>
 #include <unordered_set>
+#include <mutex>
+#include <shared_mutex>
 
 using namespace std;
 
@@ -52,20 +54,24 @@ enum ErrorType {
 
 struct ChatMessage {
     std::string sender;
-    std::string receiver;  // Puede ser "~" para chat general
+    std::string receiver;
     std::string content;
 };
 
-
-
 class DataSource {
     private:
-        unordered_map<lws*, User> users; // Nos ayuda a asociar una sesión con un usuario
-        vector<ChatMessage> generalChat; //Vector que contiene los mensajes del chat general
+        // Mutex para acceso concurrente a los datos
+        mutable shared_mutex mutex_; // Permite múltiples lectores o un único escritor
+        
+        unordered_map<lws*, User> users; // Asocia una sesión con un usuario
+        vector<ChatMessage> generalChat; // Vector que contiene los mensajes del chat general
         map<string, vector<ChatMessage>> privateChats;
 
     public:
         vector<string> getUsernames() {
+            // Lock de lectura ya que solo leemos datos
+            shared_lock<shared_mutex> lock(mutex_);
+            
             vector<string> usernames;
             for (const auto& pair : users) {
                 usernames.push_back(pair.second.username);
@@ -74,55 +80,87 @@ class DataSource {
         }
 
         bool insert_user(lws* wsi, const string& username, const string& ip_addr, int status) {
+            // Lock exclusivo ya que modificamos datos
+            unique_lock<shared_mutex> lock(mutex_);
+            
             // Verificar si el username existe o es válido
             if (username == "~" || username == "" || username.length() > 10) {
                 return false;
             }
+            
             for (const auto& pair : users) {
                 if (pair.second.username == username) {
                     return false; 
                 }
             }
+            
             // Si no existe o no es un nombre inválido, insertar 
             users[wsi] = {username, ip_addr, status};
             return true;
         }
-        //Método para hallar los usuarios que están conectados
+        
+        // Método para hallar los usuarios que están conectados
         std::vector<User> getConnectedUsers() {
+            // Lock de lectura
+            shared_lock<shared_mutex> lock(mutex_);
+            
             std::vector<User> connected;
-            for (const auto& [username, user] : users) {
-                if (user.status != DISCONNECTED) {
-                    connected.push_back(user);
+            for (const auto& pair : users) {
+                if (pair.second.status != DISCONNECTED) {
+                    connected.push_back(pair.second);
                 }
             }
             return connected;
         }
-        //Función para hallar un usuario
+        
+        // Función para hallar un usuario
         User* get_user(const std::string& username) {
-            //Iterar hasta encontrar el usuario que buscamos
+            // Lock de lectura
+            shared_lock<shared_mutex> lock(mutex_);
+            
+            // Iterar hasta encontrar el usuario que buscamos
             for (auto& pair : users) {
                 if (pair.second.username == username) {
+                    // Devolver una copia para evitar problemas de concurrencia
                     return &(pair.second);
                 }
             }
             return nullptr;
         }
 
-        void changeStatus(struct lws *wsi, int newStatus) { //Función para cambiar el status de un usuario
-            users[wsi].status = newStatus;
+        void changeStatus(struct lws *wsi, int newStatus) {
+            // Lock exclusivo
+            unique_lock<shared_mutex> lock(mutex_);
+            
+            auto it = users.find(wsi);
+            if (it != users.end()) {
+                it->second.status = newStatus;
+            }
         }
 
-        void insertMessage(struct lws *wsi, string reciever, string messageContent){
-            string senderName = users[wsi].username;
-            if (reciever == "~"){
-                generalChat.push_back({senderName, reciever, messageContent}); //Insertar el nuevo mensaje
+        void insertMessage(struct lws *wsi, string receiver, string messageContent) {
+            // Lock exclusivo
+            unique_lock<shared_mutex> lock(mutex_);
+            
+            auto it = users.find(wsi);
+            if (it == users.end()) {
+                return; // No se encontró el usuario
             }
-            else {
-                string chatKey = (senderName < reciever) ? senderName + ":" + reciever : reciever + ":" + senderName; //Generar llava única para el chat privado
-                privateChats[chatKey].push_back({senderName, reciever, messageContent}); //Insertar mensaje en la conversación privada
+            
+            string senderName = it->second.username;
+            
+            if (receiver == "~") {
+                generalChat.push_back({senderName, receiver, messageContent});
+            } else {
+                string chatKey = (senderName < receiver) ? senderName + ":" + receiver : receiver + ":" + senderName;
+                privateChats[chatKey].push_back({senderName, receiver, messageContent});
             }
         }
-        lws* get_wsi_by_username(const std::string& username) { //Busca el wsi de un user
+        
+        lws* get_wsi_by_username(const std::string& username) {
+            // Lock de lectura
+            shared_lock<shared_mutex> lock(mutex_);
+            
             for (const auto& pair : users) {
                 if (pair.second.username == username) {
                     return pair.first; 
@@ -130,26 +168,38 @@ class DataSource {
             }
             return nullptr;
         }
+        
         User* get_user_by_wsi(struct lws *wsi) {
-            //Iterar hasta encontrar el usuario que buscamos
-            for (auto& pair : users) {
-                if (pair.first == wsi) {
-                    return &(pair.second);
-                }
+            // Lock de lectura
+            shared_lock<shared_mutex> lock(mutex_);
+            
+            auto it = users.find(wsi);
+            if (it != users.end()) {
+                return &(it->second);
             }
             return nullptr;
-        } 
+        }
 
-        vector<ChatMessage> getChatHistory(string name){
-            if(name == "~"){
+        vector<ChatMessage> getChatHistory(string name, string currentUser = "") {
+            // Lock de lectura
+            shared_lock<shared_mutex> lock(mutex_);
+            
+            if (name == "~") {
                 return generalChat;
-            }
-            else {
-                if (privateChats.find(name) != privateChats.end()) {
-                    return privateChats[name];
-                } else {
-                    // Si no existe, devolver un vector vacío
+            } else {
+                string chatKey;
+                if (currentUser.empty()) {
+                    if (privateChats.find(name) != privateChats.end()) {
+                        return privateChats[name];
+                    }
+                    for (const auto& pair : privateChats) {
+                        if (pair.first.find(name) != string::npos) {
+                            return pair.second;
+                        }
+                    }
                     return vector<ChatMessage>();
+                } else {
+                    chatKey = (currentUser < name) ? currentUser + ":" + name : name + ":" + currentUser;
                 }
             }
         }
