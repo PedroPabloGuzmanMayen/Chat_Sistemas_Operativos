@@ -10,6 +10,9 @@ using namespace std;
 const int PORT = 9000;
 DataSource sourceoftruth;
 unsigned char message_buffer[LWS_PRE + 1024];
+bool isValidUserStatus(int value) {
+    return value == DISCONNECTED || value == ACTIVE || value == BUSY || value == INACTIVE;
+}
 void returnUsersToClient(struct lws *wsi) {
     auto users = sourceoftruth.getConnectedUsers();
     
