@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <vector>
 #include "DataSource.cpp"
+#include "logger.cpp"
 using namespace std;
 
 
@@ -13,7 +14,10 @@ unsigned char message_buffer[LWS_PRE + 1024];
 bool isValidUserStatus(int value) {
     return value == DISCONNECTED || value == ACTIVE || value == BUSY || value == INACTIVE;
 }
+//Crear el logger global
+Logger serverLogger("logs.txt");
 void returnUsersToClient(struct lws *wsi) {
+    serverLogger.log("Un usuario consultó la lista de usuarios");
     auto users = sourceoftruth.getConnectedUsers();
     
     // Preparar buffer para la respuesta
@@ -44,6 +48,7 @@ void returnUsersToClient(struct lws *wsi) {
 
 void returnSingleUserToClient(struct lws *wsi, const string& username) {
     // Obtener información del usuario
+
     User* userToreturn = sourceoftruth.get_user(username);
     
     // Verificar si el usuario existe
@@ -73,7 +78,7 @@ void returnSingleUserToClient(struct lws *wsi, const string& username) {
     
     // Calcular el tamaño total del mensaje: 1 byte tipo + 1 byte longitud + N bytes nombre + 1 byte estado
     size_t total_length = 2 + userToreturn->username.length() + 1;
-    
+    serverLogger.log("Se consultó la información del usuario: " + username);
     // Enviar respuesta
     lws_write(wsi, buffer, total_length, LWS_WRITE_BINARY);
 }
@@ -102,6 +107,17 @@ void changeUserStatus(struct lws *wsi, int newStatus) { //Función para cambiar 
     buffer[0] = USER_STATUS_CHANGED;
     buffer[1] = static_cast<unsigned char>(user_to_change->username.length());
     memcpy(buffer + 2, user_to_change->username.c_str(), user_to_change->username.length()); //Copiar el username
+    string statusString = "";
+    if (newStatus == 0 || newStatus == 3){
+        statusString = "DESCONECTADO";
+    }
+    else if (newStatus == 1){
+        statusString = "ACTIVO";
+    }
+    else if (newStatus == 2){
+        statusString = "OCUPADO";
+    }
+    serverLogger.log(user_to_change->username + "Cambio su estado a: " + statusString );
     buffer[2 + user_to_change->username.length()] = static_cast<unsigned char>(user_to_change->status); //Agregar el estado
     auto connectedUsers = sourceoftruth.getConnectedUsers();
     size_t total_length = 2 + user_to_change->username.length() + 1;
@@ -134,6 +150,7 @@ void sendMessage(struct lws *wsi, string reciever, string content){
     memcpy(buffer + 3 +sender->username.length(), content.c_str(), content.length() +1); // Contenido del mensaje
     size_t total_length = 2 + sender->username.length() + content.length() +1;
     if (reciever == "~"){
+        serverLogger.log(sender->username + "envió un mensaje al chat general");
         auto connectedUsers = sourceoftruth.getConnectedUsers();
         for (const auto& user : connectedUsers) {
         // Obtener el WSI asociado a cada usuario
@@ -144,6 +161,7 @@ void sendMessage(struct lws *wsi, string reciever, string content){
         }
     }
     else {
+        serverLogger.log(sender->username + "envió un mensaje privado a: " + reciever);
         lws_write(receiverWsi, buffer, total_length, LWS_WRITE_BINARY); //Enviar al usuario interesado
     }
     
@@ -170,10 +188,12 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
             bool isConnectionValid = sourceoftruth.insert_user(wsi, realUser, ip_address, 1); //Estado por defecto: Activo
             if (isConnectionValid) {
                 std::cout << "User " << realUser << "conectado exitosamente" << std::endl;
+                serverLogger.log("Un " + username + "salvaje se conecto! ");
             }
             else {
                 //Rechazar la solictud si la conexión es
                 std::cout << "Rejecting connection from " << rawUsername << " (invalid or duplicate username)" << std::endl;
+                serverLogger.log("Se rechazo la conexión de:  " + username + "por usuario inválido o duplicado! ");
                 lws_close_reason(wsi, LWS_CLOSE_STATUS_GOINGAWAY, (unsigned char*)"Invalid username", strlen("Invalid username"));
                 return -1;
             }
@@ -257,6 +277,7 @@ void startServer(int port) {
     info.port = port;
     info.protocols = protocols;
     info.options = LWS_SERVER_OPTION_HTTP_HEADERS_SECURITY_BEST_PRACTICES_ENFORCE;
+    info.count_threads = 4; //Dar un máximo de 4 threads. 
     
 
     struct lws_context *context = lws_create_context(&info);
