@@ -77,7 +77,7 @@ class DataSource {
         bool insert_user(lws* wsi, const string& username, const string& ip_addr, int status) {
             // Verificar si el username existe o es válido //Crear el mutex
             if (username == "~" || username == "" || username.length() > 10) {
-                pthread_mutex_unlock(&data_mutex); //Desbloquear
+    
                 return false;
             }
             for (const auto& pair : users) {
