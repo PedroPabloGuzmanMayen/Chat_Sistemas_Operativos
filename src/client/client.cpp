@@ -184,6 +184,15 @@ public:
         chat_disp->show_insert_position();
     }
     
+    // En ChatWindow, agregá esta función estática:
+    static void updateUserListCallback(void* data) {
+        ChatWindow* cw = static_cast<ChatWindow*>(data);
+        if (cw->client_->isConnected()) {
+            cw->client_->requestUserList();
+        }
+        // Reprogramar la actualización en 5 segundos (o el intervalo que prefieras)
+        Fl::repeat_timeout(5.0, updateUserListCallback, cw);
+    }
 
     // Modificar idle_cb para llamar a processPendingMessages:
     static void idle_cb(void* data) {
@@ -667,12 +676,7 @@ ChatWindow::ChatWindow(const std::string &user, const std::string &ip, int port)
     Fl::add_idle(idle_cb, this);
     
     // Inicializar lista de usuarios
-    Fl::add_timeout(0.1, [](void* data) {
-        ChatWindow* cw = static_cast<ChatWindow*>(data);
-        if (cw->client_->isConnected()) {
-            cw->client_->requestUserList();
-        }
-    }, this);
+    Fl::add_timeout(3.0, updateUserListCallback, this);
 }
 
 void ChatWindow::on_send(Fl_Widget* w, void* data) {
