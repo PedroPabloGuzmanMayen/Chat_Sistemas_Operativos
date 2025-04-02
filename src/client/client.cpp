@@ -40,7 +40,7 @@ enum MessageType {
     GET_HISTORY = 5,
     HISTORY_RESPONSE = 6,
     SEND_MESSAGE = 7,
-    RECEIVE_MESSAGE = 8,
+    RECEIVE_MESSAGE = 55,
     SET_STATUS = 9,
     STATUS_CHANGED = 54,
     ERROR_MSG = 10
