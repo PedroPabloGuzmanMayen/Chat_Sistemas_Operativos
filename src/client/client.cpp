@@ -641,7 +641,7 @@ ChatWindow::ChatWindow(const std::string &user, const std::string &ip, int port)
     status_choice = new Fl_Choice(0, 0, 160, 30);
     status_choice->add("Activo");
     status_choice->add("Ocupado");
-    status_choice->add("Ausente");
+    status_choice->add("Inactivo");
     status_choice->value(0);
     
     right->end();
