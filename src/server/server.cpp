@@ -408,17 +408,16 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
             pss->initialized = true;
             
             char rawUsername[50] = {0};
-            lws_get_urlarg_by_name(wsi, "name=", rawUsername, sizeof(rawUsername));
-            std::string username = std::string(rawUsername);
-            string realUser = "";
-            
-            for (int i = 0; i < username.length(); i++) {
-                if (i == username.length() - 8) {
-                    break;
-                } else {
-                    realUser += username[i];
-                }
+            lws_get_urlarg_by_name(wsi, "name", rawUsername, sizeof(rawUsername));
+            std::string realUser(rawUsername);
+            const std::string prefix = "name=";
+            if (realUser.compare(0, prefix.size(), prefix) == 0) {
+                realUser = realUser.substr(prefix.size());
             }
+            std::cout << "DEBUG: realUser = '" << realUser 
+                      << "', longitud = " << realUser.length() << std::endl;
+            
+            
             
             char ip_address[100] = {0};
             char hostname[100] = {0};
