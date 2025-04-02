@@ -167,6 +167,18 @@ void sendMessage(struct lws *wsi, string reciever, string content){
     
 }
 
+void sendChatHistory(lws *wsi,string chatName){
+    if (chatName == "~"){
+
+    }
+    else if {
+
+    }
+
+    string chatKey = (chatName < reciever) ? chatName + ":" + reciever : reciever + ":" + chatName;
+
+}
+
 static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len) {
     switch (reason) {
         case LWS_CALLBACK_ESTABLISHED: {
@@ -246,6 +258,11 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
                     break;
                 }
                 case 5:{
+                    string chatName = "";
+                    for (int i = 2; i < data[1] + 2; i++) {
+                        chatName += char(data[i]);
+                    }
+                    sendChatHistory(wsi, chatName);
                     break;
                 }
             }
@@ -268,7 +285,6 @@ void startServer(int port) {
     info.port = port;
     info.protocols = protocols;
     info.options = LWS_SERVER_OPTION_HTTP_HEADERS_SECURITY_BEST_PRACTICES_ENFORCE;
-    info.count_threads = 4; //Dar un máximo de 4 threads. 
     
 
     struct lws_context *context = lws_create_context(&info);
