@@ -305,11 +305,20 @@ void WebSocketClient::requestUserInfo(const std::string& targetUser) {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!connected_) return;
 
-        // Crear mensaje de solicitud de información
+        // Verificar que el nombre de usuario no exceda 255 caracteres
+        if (targetUser.length() > 255) {
+            if (chat_window_) {
+                chat_window_->enqueueMessage("Error: Nombre de usuario demasiado largo");
+            }
+            return;
+        }
+
+        // Construir el mensaje: [Tipo (1 byte)] [Longitud nombre (1 byte)] [Nombre]
         std::vector<uint8_t> buffer;
         buffer.push_back(GET_USER_INFO);  // Tipo de mensaje
+        buffer.push_back(static_cast<uint8_t>(targetUser.length()));  // Longitud del nombre
         
-        // Añadir el nombre de usuario objetivo
+        // Añadir el nombre de usuario
         for (char c : targetUser) {
             buffer.push_back(static_cast<uint8_t>(c));
         }
@@ -318,7 +327,7 @@ void WebSocketClient::requestUserInfo(const std::string& targetUser) {
         ws_.write(net::buffer(buffer));
         
         if (chat_window_) {
-            chat_window_->enqueueMessage("Solicitando información del usuario: " + targetUser);
+            chat_window_->enqueueMessage("Solicitando información de: " + targetUser);
         }
     }
     catch (std::exception const& e) {
@@ -470,9 +479,52 @@ void WebSocketClient::handleMessage(uint8_t messageType, const uint8_t* data, si
         }
         
         case USER_INFO_RESPONSE: { // ID 52
-            std::string info(reinterpret_cast<const char*>(data), length);
+            if (length < 2) {
+                if (chat_window_) {
+                    chat_window_->enqueueMessage("Error: Respuesta de información de usuario inválida");
+                }
+                break;
+            }
+        
+            // Primer byte es la longitud del nombre de usuario
+            uint8_t usernameLength = data[0];
+            
+            // Verificar que tengamos suficientes datos
+            if (1 + usernameLength + 1 > length) {
+                if (chat_window_) {
+                    chat_window_->enqueueMessage("Error: Datos de usuario incompletos");
+                }
+                break;
+            }
+        
+            // Extraer nombre de usuario
+            std::string username(reinterpret_cast<const char*>(data + 1), usernameLength);
+            
+            // Estado del usuario (1 byte después del nombre)
+            uint8_t statusValue = data[1 + usernameLength];
+            chat::UserStatus status = static_cast<chat::UserStatus>(statusValue);
+            
+            // Resto es información adicional
+            std::string info(reinterpret_cast<const char*>(data + 1 + usernameLength + 1), 
+                        length - (1 + usernameLength + 1));
+        
+            // Traducir estado a texto
+            std::string statusStr;
+            switch(status) {
+                case chat::ACTIVE:       statusStr = "🟢 Activo"; break;
+                case chat::BUSY:         statusStr = "🔴 Ocupado"; break;
+                case chat::INACTIVE:     statusStr = "🟡 Inactivo"; break;
+                case chat::DISCONNECTED: statusStr = "⚪ Desconectado"; break;
+                default:                 statusStr = "❓ Desconocido"; break;
+            }
+        
             if (chat_window_) {
-                chat_window_->enqueueMessage("Información: " + info);
+                chat_window_->enqueueMessage("--- Información de " + username + " ---");
+                chat_window_->enqueueMessage("Estado: " + statusStr);
+                if (!info.empty()) {
+                    chat_window_->enqueueMessage("Info: " + info);
+                }
+                chat_window_->enqueueMessage("----------------------------");
             }
             break;
         }
@@ -655,11 +707,23 @@ void ChatWindow::on_get_info(Fl_Widget* w, void* data) {
     ChatWindow* cw = static_cast<ChatWindow*>(data);
     std::string target = cw->info_input->value();
     
-    if (!target.empty() && cw->client_->isConnected()) {
-        cw->client_->requestUserInfo(target);
-    } else {
-        cw->enqueueMessage("Por favor, ingresa un nombre de usuario para consultar");
+    if (target.empty()) {
+        cw->enqueueMessage("Error: Debes ingresar un nombre de usuario");
+        return;
     }
+    
+    if (!cw->client_->isConnected()) {
+        cw->enqueueMessage("Error: No estás conectado al servidor");
+        return;
+    }
+    
+    if (target == cw->username_) {
+        cw->enqueueMessage("Info: No puedes consultar tu propia información");
+        return;
+    }
+    
+    cw->enqueueMessage("Solicitando información de: " + target);
+    cw->client_->requestUserInfo(target);
 }
 
 void ChatWindow::on_status_change(Fl_Widget* w, void* data) {
