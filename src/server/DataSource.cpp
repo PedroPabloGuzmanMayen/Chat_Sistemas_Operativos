@@ -7,12 +7,14 @@
 #include <map>
 #include <unordered_set>
 #include <mutex>
+#include <chrono>
+#include <thread>
 using namespace std;
 
 struct User {
     string username;
-    string ip_addr;
     int status;
+    std::chrono::time_point<std::chrono::system_clock> last_activity;
 };
 
 enum UserStatus {
@@ -87,7 +89,7 @@ class DataSource {
                 }
             }
             // Si no existe o no es un nombre inválido, insertar 
-            users[wsi] = {username, ip_addr, status};
+            users[wsi] = {username, status, std::chrono::system_clock::now()};
             return true;
         }
         //Método para hallar los usuarios que están conectados
@@ -161,5 +163,27 @@ class DataSource {
                     return vector<ChatMessage>();
                 }
             }
+        }
+        void update_user_activity(lws* wsi) {
+            lock_guard<mutex> lock(data_mutex);
+            auto it = users.find(wsi);
+            if (it != users.end()) {
+                it->second.last_activity = std::chrono::system_clock::now();
+            }
+        }
+        vector<pair<lws*, string>> get_inactive_users(int timeout_seconds) {
+            lock_guard<mutex> lock(data_mutex);
+            vector<pair<lws*, string>> inactive_users;
+            auto now = std::chrono::system_clock::now();
+            
+            for (auto& pair : users) {
+                auto duration = std::chrono::duration_cast<std::chrono::seconds>(
+                    now - pair.second.last_activity);
+                if (duration.count() > timeout_seconds && pair.second.status != DISCONNECTED) {
+                    inactive_users.emplace_back(pair.first, pair.second.username);
+                }
+            }
+            
+            return inactive_users;
         }
 };
