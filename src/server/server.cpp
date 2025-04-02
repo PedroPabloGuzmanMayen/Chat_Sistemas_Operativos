@@ -152,58 +152,75 @@ void changeUserStatus(struct lws *wsi, int newStatus) { //Función para cambiar 
 }
 
 void sendMessage(struct lws *wsi, string reciever, string content){
-    struct lws* receiverWsi = sourceoftruth.get_wsi_by_username(reciever);
     User* sender = sourceoftruth.get_user_by_wsi(wsi);
-    User * receiver = sourceoftruth.get_user(reciever);
-    if (!receiverWsi && !sender){
-        unsigned char *buffer = message_buffer + LWS_PRE;
-        buffer[0] = ERROR; // Código de error (50)
-        buffer[1] = USER_NOT_FOUND; // Código de error específico (1)
-        serverLogger.log("ERROR, el usuario  " + reciever + "  no fue encontrado");
-        lws_write(wsi, buffer, 2, LWS_WRITE_BINARY);
-        return;
-    }
-    else if (receiver->status == BUSY){
-        unsigned char *buffer = message_buffer + LWS_PRE;
-        buffer[0] = ERROR; // Código de error (50)
-        buffer[1] = USER_DISCONNECTED; // Código de error específico (1)
-        serverLogger.log("ERROR, el usuario " + reciever + "estaba ocupado y no pudo recibir el mensaje");
-        lws_write(wsi, buffer, 2, LWS_WRITE_BINARY);
-        return;
-    }
-    else if (sender->status == DISCONNECTED){
-        unsigned char *buffer = message_buffer + LWS_PRE;
-        buffer[0] = ERROR; // Código de error (50)
-        buffer[1] = USER_DISCONNECTED; // Código de error específico (1)
-        serverLogger.log("ERROR, el usuario " + reciever + "estaba desconectado y no pudo enviar el mensaje");
-        lws_write(wsi, buffer, 2, LWS_WRITE_BINARY);
-        return;
-    }
     unsigned char *buffer = message_buffer + LWS_PRE;
-    sourceoftruth.insertMessage(wsi, reciever, content);
-    buffer[0] = MESSAGE_RECEIVED;
-    buffer[1] = static_cast<unsigned char>(sender->username.length());
-    memcpy(buffer + 2, sender->username.c_str(), sender->username.length());
-    buffer[2+sender->username.length()] = static_cast<unsigned char>(content.length()); //Len del mensaje
-    memcpy(buffer + 3 +sender->username.length(), content.c_str(), content.length() +1); // Contenido del mensaje
-    size_t total_length = 2 + sender->username.length() + content.length() +1;
-    if (reciever == "~"){
-        serverLogger.log(sender->username + "  envió un mensaje al chat general");
-        auto connectedUsers = sourceoftruth.getConnectedUsers();
-        for (const auto& user : connectedUsers) {
-        // Obtener el WSI asociado a cada usuario
-            lws* userWsi = sourceoftruth.get_wsi_by_username(user.username);
-            if (userWsi != nullptr) { //Verificar si existe el usuario
-                lws_write(userWsi, buffer, total_length, LWS_WRITE_BINARY);
+    if (!sender) {
+        if (reciever == "~"){
+            if (sender->status == DISCONNECTED){
+                buffer[0] = ERROR; // Código de error (50)
+                buffer[1] = USER_DISCONNECTED; // Código de error específico (1)
+                serverLogger.log("ERROR, el usuario " + reciever + "estaba desconectado y no pudo enviar el mensaje");
+                lws_write(wsi, buffer, 2, LWS_WRITE_BINARY);
+                return;
+            }
+            sourceoftruth.insertMessage(wsi, reciever, content);
+            buffer[0] = MESSAGE_RECEIVED;
+            buffer[1] = static_cast<unsigned char>(sender->username.length());
+            memcpy(buffer + 2, sender->username.c_str(), sender->username.length());
+            buffer[2+sender->username.length()] = static_cast<unsigned char>(content.length()); //Len del mensaje
+            memcpy(buffer + 3 +sender->username.length(), content.c_str(), content.length() +1); // Contenido del mensaje
+            size_t total_length = 2 + sender->username.length() + content.length() +1;
+            serverLogger.log(sender->username + "  envió un mensaje al chat general");
+            auto connectedUsers = sourceoftruth.getConnectedUsers();
+            for (const auto& user : connectedUsers) {
+            // Obtener el WSI asociado a cada usuario
+                lws* userWsi = sourceoftruth.get_wsi_by_username(user.username);
+                if (userWsi != nullptr) { //Verificar si existe el usuario
+                    lws_write(userWsi, buffer, total_length, LWS_WRITE_BINARY);
+                }
             }
         }
+        else {
+            User * receiver = sourceoftruth.get_user(reciever);
+            if (!receiver){
+                unsigned char *buffer = message_buffer + LWS_PRE;
+                buffer[0] = ERROR; // Código de error (50)
+                buffer[1] = USER_NOT_FOUND; // Código de error específico (1)
+                serverLogger.log("ERROR, el usuario  " + reciever + "  no fue encontrado");
+                lws_write(wsi, buffer, 2, LWS_WRITE_BINARY);
+                return; 
+            }
+            else if (receiver->status == BUSY){
+                unsigned char *buffer = message_buffer + LWS_PRE;
+                buffer[0] = ERROR; // Código de error (50)
+                buffer[1] = USER_DISCONNECTED; // Código de error específico (1)
+                serverLogger.log("ERROR, el usuario " + reciever + "estaba ocupado y no pudo recibir el mensaje");
+                lws_write(wsi, buffer, 2, LWS_WRITE_BINARY);
+                return;
+            }
+            else if (sender->status == DISCONNECTED){
+                unsigned char *buffer = message_buffer + LWS_PRE;
+                buffer[0] = ERROR; // Código de error (50)
+                buffer[1] = USER_DISCONNECTED; // Código de error específico (1)
+                serverLogger.log("ERROR, el usuario " + reciever + "estaba desconectado y no pudo enviar el mensaje");
+                lws_write(wsi, buffer, 2, LWS_WRITE_BINARY);
+                return;
+            }
+            struct lws* receiverWsi = sourceoftruth.get_wsi_by_username(reciever);
+            sourceoftruth.insertMessage(wsi, reciever, content);
+            buffer[0] = MESSAGE_RECEIVED;
+            buffer[1] = static_cast<unsigned char>(sender->username.length());
+            memcpy(buffer + 2, sender->username.c_str(), sender->username.length());
+            buffer[2+sender->username.length()] = static_cast<unsigned char>(content.length()); //Len del mensaje
+            memcpy(buffer + 3 +sender->username.length(), content.c_str(), content.length() +1); // Contenido del mensaje
+            size_t total_length = 2 + sender->username.length() + content.length() +1;
+            serverLogger.log(sender->username + "  envió un mensaje privado a:  " + reciever);
+            lws_write(receiverWsi, buffer, total_length, LWS_WRITE_BINARY); //Enviar al usuario interesado
+        }
     }
-    else {
-        serverLogger.log(sender->username + "  envió un mensaje privado a:  " + reciever);
-        lws_write(receiverWsi, buffer, total_length, LWS_WRITE_BINARY); //Enviar al usuario interesado
-    }
-    
 }
+    
+
 void notifyNewConnection(string username){
     unsigned char *buffer = message_buffer + LWS_PRE;
     buffer[0] = USER_STATUS_CHANGED;
