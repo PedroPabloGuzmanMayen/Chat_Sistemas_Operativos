@@ -1,6 +1,6 @@
 # Compilador y flags
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -pthread -g `fltk-config --cxxflags`
+CXXFLAGS = -std=c++17 -Wall -pthread -g `fltk-config --cxxflags` -I../../include
 
 # Archivos fuente
 SRC = client.cpp
