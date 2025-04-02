@@ -6,7 +6,6 @@
 #include <set>
 #include <map>
 #include <unordered_set>
-#include <pthread.h>
 
 using namespace std;
 
@@ -75,9 +74,8 @@ class DataSource {
         }
 
         bool insert_user(lws* wsi, const string& username, const string& ip_addr, int status) {
-            // Verificar si el username existe o es válido //Crear el mutex
+            // Verificar si el username existe o es válido
             if (username == "~" || username == "" || username.length() > 10) {
-    
                 return false;
             }
             for (const auto& pair : users) {
@@ -101,16 +99,13 @@ class DataSource {
         }
         //Función para hallar un usuario
         User* get_user(const std::string& username) {
-            User* result = nullptr;
-            
+            //Iterar hasta encontrar el usuario que buscamos
             for (auto& pair : users) {
                 if (pair.second.username == username) {
-                    result = &(pair.second);
-                    break;
+                    return &(pair.second);
                 }
             }
-            
-            return result;
+            return nullptr;
         }
 
         void changeStatus(struct lws *wsi, int newStatus) { //Función para cambiar el status de un usuario
@@ -136,25 +131,22 @@ class DataSource {
             return nullptr;
         }
         User* get_user_by_wsi(struct lws *wsi) {
-            User* result = nullptr;
-            
+            //Iterar hasta encontrar el usuario que buscamos
             for (auto& pair : users) {
                 if (pair.first == wsi) {
-                    result = &(pair.second);
-                    break;
+                    return &(pair.second);
                 }
             }
-            
-            return result;
+            return nullptr;
         } 
 
-        vector<ChatMessage> getChatHistory(string name){
-            if(name == "~"){
+        vector<ChatMessage> getChatHistory(string chatKey){
+            if(chatKey == "~"){
                 return generalChat;
             }
             else {
-                if (privateChats.find(name) != privateChats.end()) {
-                    return privateChats[name];
+                if (privateChats.find(chatKey) != privateChats.end()) {
+                    return privateChats[chatKey];
                 } else {
                     // Si no existe, devolver un vector vacío
                     return vector<ChatMessage>();
