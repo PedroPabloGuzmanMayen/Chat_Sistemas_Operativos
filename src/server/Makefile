@@ -6,7 +6,7 @@ LDFLAGS = -lwebsockets
 TARGET = websocket_server
 
 # Archivos fuente
-SOURCES = server.cpp DataSource.cpp
+SOURCES = server.cpp DataSource.cpp Logger.cpp
 
 # Convertir archivos fuente a archivos objeto
 OBJECTS = $(SOURCES:.cpp=.o)
