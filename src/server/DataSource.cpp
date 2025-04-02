@@ -92,8 +92,8 @@ class DataSource {
             }
             // Si no existe o no es un nombre inválido, insertar 
             users[wsi] = {username, ip_addr, status};
+            pthread_mutex_unlock(&data_mutex);
             return true;
-            pthread_mutex_unlock(&data_mutex); //Desbloquear
         }
         //Método para hallar los usuarios que están conectados
         std::vector<User> getConnectedUsers() {
