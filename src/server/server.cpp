@@ -10,6 +10,7 @@
 
 using namespace std;
 
+void changeUserStatus(struct lws *wsi, int newStatus);
 
 const int PORT = 9000;
 DataSource sourceoftruth;
@@ -26,13 +27,16 @@ void check_inactive_users(int timeout_seconds) {
         cout << "Verficiando inactividad...\n" << endl;
         auto inactive_users = sourceoftruth.get_inactive_users(timeout_seconds);
         for (auto& [wsi, username] : inactive_users) {
-            // Cambiar estado a desconectado
-            cout << "usuario: " << username << "  inactividad\n" << endl;
-            sourceoftruth.changeStatus(wsi, DISCONNECTED);
-            serverLogger.log(username + " cambio su estado a inactivo por inactividad");
+            // En lugar de pasar a DESCONECTADO, pasar a INACTIVO
+            cout << "usuario: " << username << " inactivo" << endl;
+            sourceoftruth.changeStatus(wsi, INACTIVE);
+            // Enviar notificación de cambio de estado a todos los clientes
+            changeUserStatus(wsi, INACTIVE);
+            serverLogger.log(username + " cambió su estado a INACTIVO por inactividad");
         }
     }
 }
+
 void returnUsersToClient(struct lws *wsi) {
     serverLogger.log("Un usuario consultó la lista de usuarios");
     auto users = sourceoftruth.getConnectedUsers();
@@ -347,7 +351,7 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
             
             char ip_address[100] = {0};
             char hostname[100] = {0};
-            lws_get_peer_addresses(wsi, -1, hostname, sizeof(hostname), ip_address, sizeof(ip_address));
+            lws_get_peer_addresses(wsi, lws_get_socket_fd(wsi), hostname, sizeof(hostname), ip_address, sizeof(ip_address));
             bool isConnectionValid = sourceoftruth.insert_user(wsi, realUser, ip_address, 1); // Estado por defecto: Activo
             if (isConnectionValid) {
                 std::cout << "User " << realUser << " conectado exitosamente" << std::endl;
@@ -428,12 +432,17 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
                 }
             }
 
-
+        break; 
         }
-
+        case LWS_CALLBACK_CLOSED: {
+            std::cout << "DEBUG: Conexión cerrada, removiendo usuario" << std::endl;
+            sourceoftruth.removeUser(wsi);
+            break;
+        }
     }   
     return 0;
 }
+
 static struct lws_protocols protocols[] = {
     {"ws-protocol", ws_callback, 0, 1024}, 
     {NULL, NULL, 0, 0}
@@ -443,6 +452,7 @@ void startServer(int port) {
     struct lws_context_creation_info info;
     memset(&info, 0, sizeof(info));
 
+    info.timeout_secs = 0;
 
     info.port = port;
     info.protocols = protocols;
