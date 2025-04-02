@@ -90,16 +90,24 @@ class DataSource {
                 return false;
             }
         
-            // Verificar si ya existe
-            for (const auto& pair : users) {
-                if (pair.second.username == username) {
-                    std::cout << "DEBUG: Usuario '" << username << "' ya existe." << std::endl;
-                    return false;
+            // Buscar si ya existe un usuario con ese nombre
+            for (auto it = users.begin(); it != users.end(); ++it) {
+                if (it->second.username == username) {
+                    // Si el usuario existe y está desconectado, permitir reconexión.
+                    if (it->second.status == DISCONNECTED) {
+                        std::cout << "DEBUG: Usuario '" << username << "' estaba desconectado. Se permite reconexión." << std::endl;
+                        // Eliminar la entrada antigua
+                        users.erase(it);
+                        break;
+                    } else {
+                        std::cout << "DEBUG: Usuario '" << username << "' ya existe y está activo." << std::endl;
+                        return false;
+                    }
                 }
             }
         
-            // Insertar el usuario
-            users[wsi] = {username, ip_addr, status};
+            // Insertar el nuevo usuario
+            users[wsi] = {username, ip_addr, status, std::chrono::system_clock::now()};
             return true;
         }
         
@@ -130,6 +138,15 @@ class DataSource {
         void changeStatus(struct lws *wsi, int newStatus) { //Función para cambiar el status de un usuario
             lock_guard<mutex> lock(data_mutex);
             users[wsi].status = newStatus;
+        }
+
+        void removeUser(lws* wsi) {
+            std::lock_guard<std::shared_mutex> lock(mutex_);
+            auto it = users.find(wsi);
+            if (it != users.end()) {
+                std::cout << "DEBUG: Removiendo usuario '" << it->second.username << "'" << std::endl;
+                users.erase(it);
+            }
         }
 
         void insertMessage(struct lws *wsi, string reciever, string messageContent){
