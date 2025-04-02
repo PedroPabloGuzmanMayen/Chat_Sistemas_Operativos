@@ -9,6 +9,7 @@
 #include <mutex>
 #include <shared_mutex>
 
+
 using namespace std;
 
 struct User {
@@ -79,25 +80,29 @@ class DataSource {
             return usernames;
         }
 
-        bool insert_user(lws* wsi, const string& username, const string& ip_addr, int status) {
-            // Lock exclusivo ya que modificamos datos
-            unique_lock<shared_mutex> lock(mutex_);
-            
-            // Verificar si el username existe o es válido
-            if (username == "~" || username == "" || username.length() > 10) {
+        bool insert_user(lws* wsi, const std::string& username, const std::string& ip_addr, int status) {
+            std::lock_guard<std::shared_mutex> lock(mutex_);
+            std::cout << "DEBUG: insert_user: username='" << username << "', ip_addr='" << ip_addr << "'" << std::endl;
+        
+            // Verificar si el username es inválido
+            if (username == "~" || username.empty() || username.length() > 10) {
+                std::cout << "DEBUG: Username inválido: '" << username << "'" << std::endl;
                 return false;
             }
-            
+        
+            // Verificar si ya existe
             for (const auto& pair : users) {
                 if (pair.second.username == username) {
-                    return false; 
+                    std::cout << "DEBUG: Usuario '" << username << "' ya existe." << std::endl;
+                    return false;
                 }
             }
-            
-            // Si no existe o no es un nombre inválido, insertar 
+        
+            // Insertar el usuario
             users[wsi] = {username, ip_addr, status};
             return true;
         }
+        
         
         // Método para hallar los usuarios que están conectados
         std::vector<User> getConnectedUsers() {
