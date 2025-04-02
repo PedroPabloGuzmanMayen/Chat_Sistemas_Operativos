@@ -58,12 +58,14 @@ private:
     bool connected_ = false;
     std::thread ioc_thread_;
     ChatWindow* chat_window_ = nullptr;
+    net::executor_work_guard<net::io_context::executor_type> work_guard_;
 
 public:
     WebSocketClient(const std::string& username)
         : ioc_()
         , ws_(ioc_)
-        , username_(username) {
+        , username_(username), 
+        work_guard_(net::make_work_guard(ioc_)) {  
     }
 
     ~WebSocketClient() {
@@ -260,9 +262,6 @@ bool WebSocketClient::connect(const std::string& host, const std::string& port) 
 
 void WebSocketClient::runIoContext() {
     try {
-        // Iniciar un trabajo para evitar que ioc_.run() salga cuando no hay operaciones
-        net::make_work_guard(ioc_);
-        
         // Iniciar el bucle de recepción de mensajes
         runReceiveLoop();
         
