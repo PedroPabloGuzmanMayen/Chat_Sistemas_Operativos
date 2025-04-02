@@ -5,11 +5,14 @@
 #include <vector>
 #include "DataSource.cpp"
 #include "logger.cpp"
+#include <thread>
+#include <mutex>
 using namespace std;
 
 
 const int PORT = 9000;
 DataSource sourceoftruth;
+mutex global_mutex;
 unsigned char message_buffer[LWS_PRE + 1024];
 bool isValidUserStatus(int value) {
     return value == DISCONNECTED || value == ACTIVE || value == BUSY || value == INACTIVE;
@@ -17,6 +20,7 @@ bool isValidUserStatus(int value) {
 //Crear el logger global
 Logger serverLogger("logs.txt");
 void returnUsersToClient(struct lws *wsi) {
+    lock_guard<mutex> lock(global_mutex);
     serverLogger.log("Un usuario consultó la lista de usuarios");
     auto users = sourceoftruth.getConnectedUsers();
     
@@ -48,7 +52,7 @@ void returnUsersToClient(struct lws *wsi) {
 
 void returnSingleUserToClient(struct lws *wsi, const string& username) {
     // Obtener información del usuario
-
+    lock_guard<mutex> lock(global_mutex);
     User* userToreturn = sourceoftruth.get_user(username);
     
     // Verificar si el usuario existe
@@ -84,7 +88,7 @@ void returnSingleUserToClient(struct lws *wsi, const string& username) {
 }
 
 void changeUserStatus(struct lws *wsi, int newStatus) { //Función para cambiar el estado de un usuario. 
-    
+    lock_guard<mutex> lock(global_mutex);
     User* user_to_change = sourceoftruth.get_user_by_wsi(wsi);
     if (!user_to_change){
         unsigned char *buffer = message_buffer + LWS_PRE;
@@ -132,6 +136,7 @@ void changeUserStatus(struct lws *wsi, int newStatus) { //Función para cambiar 
 }
 
 void sendMessage(struct lws *wsi, string reciever, string content){
+    lock_guard<mutex> lock(global_mutex);
     struct lws* receiverWsi = sourceoftruth. get_wsi_by_username(reciever);
     User* sender = sourceoftruth.get_user_by_wsi(wsi);
     if (!receiverWsi && !sender){
@@ -167,6 +172,7 @@ void sendMessage(struct lws *wsi, string reciever, string content){
     
 }
 
+/*
 void sendChatHistory(lws *wsi,string chatName){
     if (chatName == "~"){
 
@@ -178,6 +184,7 @@ void sendChatHistory(lws *wsi,string chatName){
     string chatKey = (chatName < reciever) ? chatName + ":" + reciever : reciever + ":" + chatName;
 
 }
+    */
 
 static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len) {
     switch (reason) {
@@ -188,7 +195,12 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
             char ip_address[100] = {0};
             char hostname[100] = {0};
             lws_get_peer_addresses(wsi, -1, hostname, sizeof(hostname), ip_address, sizeof(ip_address));
-            bool isConnectionValid = sourceoftruth.insert_user(wsi, username, ip_address, 1); //Estado por defecto: Activo
+            bool isConnectionValid;
+            {
+                lock_guard<mutex> lock(global_mutex);
+                bool isConnectionValid = sourceoftruth.insert_user(wsi, username, ip_address, ACTIVE); 
+            }
+            
             if (isConnectionValid) {
                 std::cout << "User " << username << "conectado exitosamente" << std::endl;
                 serverLogger.log("Un " + username + "salvaje se conecto! ");
@@ -209,65 +221,66 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
 
             unsigned char *data = (unsigned char*)in; //Obtener el array que envía el cliente
             uint8_t messagetype = data[0];
-
-            switch(messagetype){
-                case 1: { //Caso 1: listar usuarios
-                    returnUsersToClient(wsi);
-                    break;
-                }
-                case 2: { //Caso 2: 
-                    string userTofind = ""; //Castear el contenido del array
-                    for (int i = 2; i < data[1] +2; i++){
-                        userTofind += char(data[i]);
+            std::thread handler([=]() {
+                switch(messagetype){
+                    case 1: { //Caso 1: listar usuarios
+                        returnUsersToClient(wsi);
+                        break;
                     }
-                    cout << "username: " << userTofind << "\n" << endl;
-                    returnSingleUserToClient(wsi, userTofind);
-                    break;
-                }
-                case 3: {
-                    changeUserStatus(wsi, data[len-1]);
-                    break;
-                }
-                case 4: {
-                    if (len < 2) return 0;
-    
-                    // Obtener longitud del nombre del destinatario
-                    uint8_t dest_len = data[1];
-    
-                    // Verificar que haya suficientes datos para el nombre
-                    if (len < 2 + dest_len) return 0;
-    
-                    // Extraer nombre del destinatario
-                    string userToSend = "";
-                    for (int i = 2; i < 2 + dest_len; i++) {
-                        userToSend += char(data[i]);
+                    case 2: { //Caso 2: 
+                        string userTofind = ""; //Castear el contenido del array
+                        for (int i = 2; i < data[1] +2; i++){
+                            userTofind += char(data[i]);
+                        }
+                        cout << "username: " << userTofind << "\n" << endl;
+                        returnSingleUserToClient(wsi, userTofind);
+                        break;
                     }
-    
-                    // Obtener longitud del mensaje (ubicada después del nombre)
-                    uint8_t msg_len = data[2 + dest_len];
-    
-                    // Verificar que haya suficientes datos para el mensaje
-                    if (len < 3 + dest_len + msg_len) return 0;
-    
-                    // Extraer contenido del mensaje
-                    string message_content = "";
-                    for (int i = 3 + dest_len; i < 3 + dest_len + msg_len; i++) {
-                        message_content += char(data[i]);
+                    case 3: {
+                        changeUserStatus(wsi, data[len-1]);
+                        break;
                     }
-                    sendMessage(wsi,userToSend, message_content);
-                    break;
-                }
-                case 5:{
-                    string chatName = "";
-                    for (int i = 2; i < data[1] + 2; i++) {
-                        chatName += char(data[i]);
+                    case 4: {
+                        if (len < 2) return 0;
+        
+                        // Obtener longitud del nombre del destinatario
+                        uint8_t dest_len = data[1];
+        
+                        // Verificar que haya suficientes datos para el nombre
+                        if (len < 2 + dest_len) return 0;
+        
+                        // Extraer nombre del destinatario
+                        string userToSend = "";
+                        for (int i = 2; i < 2 + dest_len; i++) {
+                            userToSend += char(data[i]);
+                        }
+        
+                        // Obtener longitud del mensaje (ubicada después del nombre)
+                        uint8_t msg_len = data[2 + dest_len];
+        
+                        // Verificar que haya suficientes datos para el mensaje
+                        if (len < 3 + dest_len + msg_len) return 0;
+        
+                        // Extraer contenido del mensaje
+                        string message_content = "";
+                        for (int i = 3 + dest_len; i < 3 + dest_len + msg_len; i++) {
+                            message_content += char(data[i]);
+                        }
+                        sendMessage(wsi,userToSend, message_content);
+                        break;
                     }
-                    sendChatHistory(wsi, chatName);
-                    break;
+                    case 5:{
+                        string chatName = "";
+                        for (int i = 2; i < data[1] + 2; i++) {
+                            chatName += char(data[i]);
+                        }
+                        //sendChatHistory(wsi, chatName);
+                        break;
+                    }
                 }
-            }
-
-
+            });
+           handler.detach();
+           break;
         }
 
     }   
