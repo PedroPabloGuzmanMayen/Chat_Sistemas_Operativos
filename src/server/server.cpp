@@ -5,22 +5,36 @@
 #include <vector>
 #include "DataSource.cpp"
 #include "logger.cpp"
+#include <chrono>  
 #include <thread>
-#include <mutex>
+
 using namespace std;
 
 
 const int PORT = 9000;
 DataSource sourceoftruth;
-mutex global_mutex;
 unsigned char message_buffer[LWS_PRE + 1024];
 bool isValidUserStatus(int value) {
     return value == DISCONNECTED || value == ACTIVE || value == BUSY || value == INACTIVE;
 }
 //Crear el logger global
 Logger serverLogger("logs.txt");
+
+void check_inactive_users(int timeout_seconds) {
+    while (true) {
+        std::this_thread::sleep_for(std::chrono::seconds(10)); // Verificar cada 10 segundos
+        cout << "Verficiando inactividad...\n" << endl;
+        auto inactive_users = sourceoftruth.get_inactive_users(timeout_seconds);
+        for (auto& [wsi, username] : inactive_users) {
+            // Cambiar estado a desconectado
+            cout << "usuario: " << username << "  inactividad\n" << endl;
+            sourceoftruth.changeStatus(wsi, DISCONNECTED);
+            serverLogger.log(username + " cambio su estado a inactivo por inactividad");
+            
+        }
+    }
+}
 void returnUsersToClient(struct lws *wsi) {
-    lock_guard<mutex> lock(global_mutex);
     serverLogger.log("Un usuario consultó la lista de usuarios");
     auto users = sourceoftruth.getConnectedUsers();
     
@@ -52,7 +66,7 @@ void returnUsersToClient(struct lws *wsi) {
 
 void returnSingleUserToClient(struct lws *wsi, const string& username) {
     // Obtener información del usuario
-    lock_guard<mutex> lock(global_mutex);
+
     User* userToreturn = sourceoftruth.get_user(username);
     
     // Verificar si el usuario existe
@@ -62,6 +76,7 @@ void returnSingleUserToClient(struct lws *wsi, const string& username) {
         buffer[0] = ERROR; // Código de error (50)
         buffer[1] = USER_NOT_FOUND; // Código de error específico (1)
         lws_write(wsi, buffer, 2, LWS_WRITE_BINARY);
+        serverLogger.log("ERROR, el usuario  " + username + "  no fue encontrado");
         return;
     }
     
@@ -88,12 +103,13 @@ void returnSingleUserToClient(struct lws *wsi, const string& username) {
 }
 
 void changeUserStatus(struct lws *wsi, int newStatus) { //Función para cambiar el estado de un usuario. 
-    lock_guard<mutex> lock(global_mutex);
+    
     User* user_to_change = sourceoftruth.get_user_by_wsi(wsi);
     if (!user_to_change){
         unsigned char *buffer = message_buffer + LWS_PRE;
         buffer[0] = ERROR; // Código de error (50)
         buffer[1] = USER_NOT_FOUND; // Código de error específico (1)
+        serverLogger.log("ERROR, el usuario  " + user_to_change->username + "  no fue encontrado");
         lws_write(wsi, buffer, 2, LWS_WRITE_BINARY);
         return;
     }
@@ -102,6 +118,7 @@ void changeUserStatus(struct lws *wsi, int newStatus) { //Función para cambiar 
         unsigned char *buffer = message_buffer + LWS_PRE;
         buffer[0] = ERROR; // Código de error (50)
         buffer[1] = INVALID_STATUS; // Código de error específico (1)
+        serverLogger.log("ERROR, el status era inválido");
         lws_write(wsi, buffer, 2, LWS_WRITE_BINARY);
         return;
     }
@@ -136,13 +153,30 @@ void changeUserStatus(struct lws *wsi, int newStatus) { //Función para cambiar 
 }
 
 void sendMessage(struct lws *wsi, string reciever, string content){
-    lock_guard<mutex> lock(global_mutex);
-    struct lws* receiverWsi = sourceoftruth. get_wsi_by_username(reciever);
+    struct lws* receiverWsi = sourceoftruth.get_wsi_by_username(reciever);
     User* sender = sourceoftruth.get_user_by_wsi(wsi);
+    User * receiver = sourceoftruth.get_user(reciever);
     if (!receiverWsi && !sender){
         unsigned char *buffer = message_buffer + LWS_PRE;
         buffer[0] = ERROR; // Código de error (50)
         buffer[1] = USER_NOT_FOUND; // Código de error específico (1)
+        serverLogger.log("ERROR, el usuario  " + reciever + "  no fue encontrado");
+        lws_write(wsi, buffer, 2, LWS_WRITE_BINARY);
+        return;
+    }
+    else if (receiver->status == BUSY){
+        unsigned char *buffer = message_buffer + LWS_PRE;
+        buffer[0] = ERROR; // Código de error (50)
+        buffer[1] = USER_DISCONNECTED; // Código de error específico (1)
+        serverLogger.log("ERROR, el usuario " + reciever + "estaba ocupado y no pudo recibir el mensaje");
+        lws_write(wsi, buffer, 2, LWS_WRITE_BINARY);
+        return;
+    }
+    else if (sender->status == DISCONNECTED){
+        unsigned char *buffer = message_buffer + LWS_PRE;
+        buffer[0] = ERROR; // Código de error (50)
+        buffer[1] = USER_DISCONNECTED; // Código de error específico (1)
+        serverLogger.log("ERROR, el usuario " + reciever + "estaba desconectado y no pudo enviar el mensaje");
         lws_write(wsi, buffer, 2, LWS_WRITE_BINARY);
         return;
     }
@@ -155,7 +189,7 @@ void sendMessage(struct lws *wsi, string reciever, string content){
     memcpy(buffer + 3 +sender->username.length(), content.c_str(), content.length() +1); // Contenido del mensaje
     size_t total_length = 2 + sender->username.length() + content.length() +1;
     if (reciever == "~"){
-        serverLogger.log(sender->username + "envió un mensaje al chat general");
+        serverLogger.log(sender->username + "  envió un mensaje al chat general");
         auto connectedUsers = sourceoftruth.getConnectedUsers();
         for (const auto& user : connectedUsers) {
         // Obtener el WSI asociado a cada usuario
@@ -166,12 +200,11 @@ void sendMessage(struct lws *wsi, string reciever, string content){
         }
     }
     else {
-        serverLogger.log(sender->username + "envió un mensaje privado a: " + reciever);
+        serverLogger.log(sender->username + "  envió un mensaje privado a:  " + reciever);
         lws_write(receiverWsi, buffer, total_length, LWS_WRITE_BINARY); //Enviar al usuario interesado
     }
     
 }
-
 /*
 void sendChatHistory(lws *wsi,string chatName){
     if (chatName == "~"){
@@ -184,7 +217,7 @@ void sendChatHistory(lws *wsi,string chatName){
     string chatKey = (chatName < reciever) ? chatName + ":" + reciever : reciever + ":" + chatName;
 
 }
-    */
+*/
 
 static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len) {
     switch (reason) {
@@ -195,15 +228,10 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
             char ip_address[100] = {0};
             char hostname[100] = {0};
             lws_get_peer_addresses(wsi, -1, hostname, sizeof(hostname), ip_address, sizeof(ip_address));
-            bool isConnectionValid;
-            {
-                lock_guard<mutex> lock(global_mutex);
-                bool isConnectionValid = sourceoftruth.insert_user(wsi, username, ip_address, ACTIVE); 
-            }
-            
+            bool isConnectionValid = sourceoftruth.insert_user(wsi, username, ip_address, 1); //Estado por defecto: Activo
             if (isConnectionValid) {
                 std::cout << "User " << username << "conectado exitosamente" << std::endl;
-                serverLogger.log("Un " + username + "salvaje se conecto! ");
+                serverLogger.log("Un " + username + "  salvaje se conecto al server ! ");
             }
             else {
                 //Rechazar la solictud si la conexión es
@@ -218,69 +246,69 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
         case LWS_CALLBACK_RECEIVE: {
 
             if (len < 1) return 0;
+            sourceoftruth.update_user_activity(wsi);
 
             unsigned char *data = (unsigned char*)in; //Obtener el array que envía el cliente
             uint8_t messagetype = data[0];
-            std::thread handler([=]() {
-                switch(messagetype){
-                    case 1: { //Caso 1: listar usuarios
-                        returnUsersToClient(wsi);
-                        break;
-                    }
-                    case 2: { //Caso 2: 
-                        string userTofind = ""; //Castear el contenido del array
-                        for (int i = 2; i < data[1] +2; i++){
-                            userTofind += char(data[i]);
-                        }
-                        cout << "username: " << userTofind << "\n" << endl;
-                        returnSingleUserToClient(wsi, userTofind);
-                        break;
-                    }
-                    case 3: {
-                        changeUserStatus(wsi, data[len-1]);
-                        break;
-                    }
-                    case 4: {
-                        if (len < 2) return 0;
-        
-                        // Obtener longitud del nombre del destinatario
-                        uint8_t dest_len = data[1];
-        
-                        // Verificar que haya suficientes datos para el nombre
-                        if (len < 2 + dest_len) return 0;
-        
-                        // Extraer nombre del destinatario
-                        string userToSend = "";
-                        for (int i = 2; i < 2 + dest_len; i++) {
-                            userToSend += char(data[i]);
-                        }
-        
-                        // Obtener longitud del mensaje (ubicada después del nombre)
-                        uint8_t msg_len = data[2 + dest_len];
-        
-                        // Verificar que haya suficientes datos para el mensaje
-                        if (len < 3 + dest_len + msg_len) return 0;
-        
-                        // Extraer contenido del mensaje
-                        string message_content = "";
-                        for (int i = 3 + dest_len; i < 3 + dest_len + msg_len; i++) {
-                            message_content += char(data[i]);
-                        }
-                        sendMessage(wsi,userToSend, message_content);
-                        break;
-                    }
-                    case 5:{
-                        string chatName = "";
-                        for (int i = 2; i < data[1] + 2; i++) {
-                            chatName += char(data[i]);
-                        }
-                        //sendChatHistory(wsi, chatName);
-                        break;
-                    }
+
+            switch(messagetype){
+                case 1: { //Caso 1: listar usuarios
+                    returnUsersToClient(wsi);
+                    break;
                 }
-            });
-           handler.detach();
-           break;
+                case 2: { //Caso 2: 
+                    string userTofind = ""; //Castear el contenido del array
+                    for (int i = 2; i < data[1] +2; i++){
+                        userTofind += char(data[i]);
+                    }
+                    cout << "username: " << userTofind << "\n" << endl;
+                    returnSingleUserToClient(wsi, userTofind);
+                    break;
+                }
+                case 3: {
+                    changeUserStatus(wsi, data[len-1]);
+                    break;
+                }
+                case 4: {
+                    if (len < 2) return 0;
+    
+                    // Obtener longitud del nombre del destinatario
+                    uint8_t dest_len = data[1];
+    
+                    // Verificar que haya suficientes datos para el nombre
+                    if (len < 2 + dest_len) return 0;
+    
+                    // Extraer nombre del destinatario
+                    string userToSend = "";
+                    for (int i = 2; i < 2 + dest_len; i++) {
+                        userToSend += char(data[i]);
+                    }
+    
+                    // Obtener longitud del mensaje (ubicada después del nombre)
+                    uint8_t msg_len = data[2 + dest_len];
+    
+                    // Verificar que haya suficientes datos para el mensaje
+                    if (len < 3 + dest_len + msg_len) return 0;
+    
+                    // Extraer contenido del mensaje
+                    string message_content = "";
+                    for (int i = 3 + dest_len; i < 3 + dest_len + msg_len; i++) {
+                        message_content += char(data[i]);
+                    }
+                    sendMessage(wsi,userToSend, message_content);
+                    break;
+                }
+                case 5:{
+                    string chatName = "";
+                    for (int i = 2; i < data[1] + 2; i++) {
+                        chatName += char(data[i]);
+                    }
+                    //sendChatHistory(wsi, chatName);
+                    break;
+                }
+            }
+
+
         }
 
     }   
@@ -295,9 +323,11 @@ void startServer(int port) {
     struct lws_context_creation_info info;
     memset(&info, 0, sizeof(info));
 
+
     info.port = port;
     info.protocols = protocols;
     info.options = LWS_SERVER_OPTION_HTTP_HEADERS_SECURITY_BEST_PRACTICES_ENFORCE;
+    info.count_threads = 4;
     
 
     struct lws_context *context = lws_create_context(&info);
@@ -316,6 +346,10 @@ void startServer(int port) {
 }
 
 int main() {
+    const int INACTIVITY_TIMEOUT = 60; // 5 minutos en segundos
+    
+    std::thread inactivity_thread(check_inactive_users, INACTIVITY_TIMEOUT);
+    inactivity_thread.detach();
     startServer(PORT);
     return 0;
 }
