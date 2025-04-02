@@ -222,19 +222,97 @@ void notifyNewConnection(string username){
 
     
 }
-/*
+
 void sendChatHistory(lws *wsi,string chatName){
-    if (chatName == "~"){
 
+        // Buffer para la respuesta, considerando espacio LWS_PRE
+    unsigned char buffer[LWS_PRE + 1024];
+    unsigned char *p = &buffer[LWS_PRE];
+    
+    // El primer byte indica el tipo de mensaje: CHAT_HISTORY_RESPONSE (56)
+    *p++ = CHAT_HISTORY_RESPONSE;
+    
+    // Obtener el usuario solicitante
+    User* requestingUser = sourceoftruth.get_user_by_wsi(wsi);
+    if (!requestingUser) {
+        // Si no encontramos al usuario, enviar error
+        buffer[LWS_PRE] = ERROR;
+        buffer[LWS_PRE + 1] = USER_NOT_FOUND;
+        lws_write(wsi, &buffer[LWS_PRE], 2, LWS_WRITE_BINARY);
+        return;
     }
-    else if {
-
+    
+    // Identificar de qué chat obtener el historial
+    vector<ChatMessage> messages;
+    if (chatName == "~") {
+        // Chat general
+        messages = sourceoftruth.getChatHistory("~");
+    } else {
+        // Chat privado, generar la clave correcta
+        string reciever = chatName;
+        string senderName = requestingUser->username;
+        string chatKey = (senderName < reciever) ? senderName + ":" + reciever : reciever + ":" + senderName;
+        messages = sourceoftruth.getChatHistory(chatKey);
     }
-
-    string chatKey = (chatName < reciever) ? chatName + ":" + reciever : reciever + ":" + chatName;
+    
+    // Reiniciar el puntero después del tipo de mensaje
+    p = &buffer[LWS_PRE + 1];
+    
+    size_t numMessages = std::min(messages.size(), (size_t)255);
+    *p++ = (unsigned char)numMessages;
+    
+    // Variables para seguimiento
+    size_t remainingSpace = 1022; // 1024 - 2 bytes ya usados (tipo y num mensajes)
+    size_t messagesSent = 0;
+    
+    // Iterar sobre los mensajes
+    for (size_t i = 0; i < numMessages; i++) {
+        const ChatMessage& msg = messages[i];
+        
+        // Longitud del nombre del usuario
+        size_t userLen = msg.sender.length();
+        // Longitud del contenido del mensaje
+        size_t msgLen = msg.content.length();
+        
+        // Verificar si hay espacio suficiente
+        if (remainingSpace < 2 + userLen + msgLen) {
+            break; // No hay más espacio, detener
+        }
+        
+        // Añadir longitud del nombre
+        *p++ = (unsigned char)userLen;
+        remainingSpace--;
+        
+        // Añadir nombre del usuario
+        memcpy(p, msg.sender.c_str(), userLen);
+        p += userLen;
+        remainingSpace -= userLen;
+        
+        // Añadir longitud del mensaje
+        *p++ = (unsigned char)msgLen;
+        remainingSpace--;
+        
+        // Añadir contenido del mensaje
+        memcpy(p, msg.content.c_str(), msgLen);
+        p += msgLen;
+        remainingSpace -= msgLen;
+        
+        messagesSent++;
+    }
+    
+    // Corregir número de mensajes si se envían menos por limitaciones de espacio
+    if (messagesSent < numMessages) {
+        buffer[LWS_PRE + 1] = (unsigned char)messagesSent;
+    }
+    
+    // Calcular el tamaño total del mensaje
+    size_t totalLen = p - &buffer[LWS_PRE];
+    
+    // Enviar el paquete al cliente
+    lws_write(wsi, &buffer[LWS_PRE], totalLen, LWS_WRITE_BINARY);
 
 }
-*/
+
 
 static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len) {
     switch (reason) {
@@ -321,7 +399,7 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
                     for (int i = 2; i < data[1] + 2; i++) {
                         chatName += char(data[i]);
                     }
-                    //sendChatHistory(wsi, chatName);
+                    sendChatHistory(wsi, chatName);
                     break;
                 }
             }
