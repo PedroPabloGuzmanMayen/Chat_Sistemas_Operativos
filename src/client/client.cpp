@@ -685,11 +685,16 @@ void ChatWindow::on_send(Fl_Widget* w, void* data) {
     std::cout << "[DEBUG] Enviando mensaje: " << msg << std::endl;
 
     if (!msg.empty() && cw->client_->isConnected()) {
-        // Obtener el destinatario. Si es "Chat general", getSelectedTargetUser retorna "~"
+        // Si el estado actual (según la elección del usuario) es "Inactivo", pasarlo a "Activo"
+        // Suponiendo: 1 -> "Activo", 2 -> "Ocupado", 3 -> "Inactivo"
+        if (cw->status_choice->value() == 2) {
+            cw->status_choice->value(1); // Actualiza la UI a "Activo"
+            cw->client_->setStatus(chat::ACTIVE);
+        }
+        
         std::string targetUser = cw->getSelectedTargetUser();
         std::cout << "[DEBUG] Destinatario seleccionado: " << targetUser << std::endl;
 
-        // Enviar mensaje (ya sea a chat general o a un usuario específico)
         cw->client_->sendMessageToUser(targetUser, msg);
         cw->appendToChat("Tú → " + targetUser + ": " + msg);
         cw->msg_in->value("");
