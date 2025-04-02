@@ -6,7 +6,7 @@
 #include <set>
 #include <map>
 #include <unordered_set>
-
+#include <mutex>
 using namespace std;
 
 struct User {
@@ -63,9 +63,11 @@ class DataSource {
         unordered_map<lws*, User> users; // Nos ayuda a asociar una sesión con un usuario
         vector<ChatMessage> generalChat; //Vector que contiene los mensajes del chat general
         map<string, vector<ChatMessage>> privateChats;
+        mutable std::mutex data_mutex;
 
     public:
         vector<string> getUsernames() {
+            lock_guard<mutex> lock(data_mutex);
             vector<string> usernames;
             for (const auto& pair : users) {
                 usernames.push_back(pair.second.username);
@@ -74,6 +76,7 @@ class DataSource {
         }
 
         bool insert_user(lws* wsi, const string& username, const string& ip_addr, int status) {
+            lock_guard<mutex> lock(data_mutex);
             // Verificar si el username existe o es válido
             if (username == "~" || username == "" || username.length() > 10) {
                 return false;
@@ -89,6 +92,7 @@ class DataSource {
         }
         //Método para hallar los usuarios que están conectados
         std::vector<User> getConnectedUsers() {
+            lock_guard<mutex> lock(data_mutex);
             std::vector<User> connected;
             for (const auto& [username, user] : users) {
                 if (user.status != DISCONNECTED) {
@@ -99,6 +103,7 @@ class DataSource {
         }
         //Función para hallar un usuario
         User* get_user(const std::string& username) {
+            lock_guard<mutex> lock(data_mutex);
             //Iterar hasta encontrar el usuario que buscamos
             for (auto& pair : users) {
                 if (pair.second.username == username) {
@@ -109,10 +114,12 @@ class DataSource {
         }
 
         void changeStatus(struct lws *wsi, int newStatus) { //Función para cambiar el status de un usuario
+            lock_guard<mutex> lock(data_mutex);
             users[wsi].status = newStatus;
         }
 
         void insertMessage(struct lws *wsi, string reciever, string messageContent){
+            lock_guard<mutex> lock(data_mutex);
             string senderName = users[wsi].username;
             if (reciever == "~"){
                 generalChat.push_back({senderName, reciever, messageContent}); //Insertar el nuevo mensaje
@@ -123,6 +130,7 @@ class DataSource {
             }
         }
         lws* get_wsi_by_username(const std::string& username) { //Busca el wsi de un user
+            lock_guard<mutex> lock(data_mutex);
             for (const auto& pair : users) {
                 if (pair.second.username == username) {
                     return pair.first; 
@@ -131,16 +139,17 @@ class DataSource {
             return nullptr;
         }
         User* get_user_by_wsi(struct lws *wsi) {
+            lock_guard<mutex> lock(data_mutex);
             //Iterar hasta encontrar el usuario que buscamos
-            for (auto& pair : users) {
-                if (pair.first == wsi) {
-                    return &(pair.second);
-                }
+            auto it = users.find(wsi);
+            if (it != users.end()) {
+                return &(it->second);
             }
             return nullptr;
         } 
 
         vector<ChatMessage> getChatHistory(string chatKey){
+            lock_guard<mutex> lock(data_mutex);
             if(chatKey == "~"){
                 return generalChat;
             }
