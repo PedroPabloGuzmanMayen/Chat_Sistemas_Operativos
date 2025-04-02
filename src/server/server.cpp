@@ -317,26 +317,33 @@ void sendChatHistory(lws *wsi,string chatName){
 static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len) {
     switch (reason) {
         case LWS_CALLBACK_ESTABLISHED: {
-            char rawUsername[50] = {0}; //Creamos esta variable para almacenar el username del usuario conectado
-            char *query_string = (char *)lws_get_urlarg_by_name(wsi, "name=", rawUsername, sizeof(rawUsername)); //Obtenemos el username de la sesión del usuario
-            std::string username = std::string(rawUsername);
+            char rawUsername[50] = {0};
+            // Se pide el argumento "name" (sin el signo '=')
+            lws_get_urlarg_by_name(wsi, "name", rawUsername, sizeof(rawUsername));
+            std::string realUser(rawUsername);
+            const std::string prefix = "name=";
+            if (realUser.compare(0, prefix.size(), prefix) == 0) {
+                realUser = realUser.substr(prefix.size());
+            }
+            std::cout << "DEBUG: realUser = '" << realUser 
+                      << "', longitud = " << realUser.length() << std::endl;
+            
             char ip_address[100] = {0};
             char hostname[100] = {0};
             lws_get_peer_addresses(wsi, -1, hostname, sizeof(hostname), ip_address, sizeof(ip_address));
-            bool isConnectionValid = sourceoftruth.insert_user(wsi, username, ip_address, 1); //Estado por defecto: Activo
+            bool isConnectionValid = sourceoftruth.insert_user(wsi, realUser, ip_address, 1); // Estado por defecto: Activo
             if (isConnectionValid) {
-                std::cout << "User " << username << "conectado exitosamente" << std::endl;
-                serverLogger.log("Un " + username + "  salvaje se conecto al server ! ");
-                notifyNewConnection(username);
+                std::cout << "User " << realUser << " conectado exitosamente" << std::endl;
+                serverLogger.log("Un " + realUser + " salvaje se conecto al server!");
+                notifyNewConnection(realUser);
             }
             else {
-                //Rechazar la solictud si la conexión es
-                std::cout << "Rejecting connection from " << username << " (invalid or duplicate username)" << std::endl;
-                serverLogger.log("Se rechazo la conexión de:  " + username + "por usuario inválido o duplicado! ");
-                lws_close_reason(wsi, LWS_CLOSE_STATUS_GOINGAWAY, (unsigned char*)"Invalid username", strlen("Invalid username"));
+                std::cout << "Rejecting connection from " << realUser << " (invalid or duplicate username)" << std::endl;
+                serverLogger.log("Se rechazo la conexión de: " + realUser + " por usuario inválido o duplicado!");
+                lws_close_reason(wsi, LWS_CLOSE_STATUS_GOINGAWAY,
+                                 (unsigned char*)"Invalid username", strlen("Invalid username"));
                 return -1;
             }
-
             break;
         }
         case LWS_CALLBACK_RECEIVE: {
