@@ -30,7 +30,6 @@ void check_inactive_users(int timeout_seconds) {
             cout << "usuario: " << username << "  inactividad\n" << endl;
             sourceoftruth.changeStatus(wsi, DISCONNECTED);
             serverLogger.log(username + " cambio su estado a inactivo por inactividad");
-            
         }
     }
 }
@@ -205,6 +204,24 @@ void sendMessage(struct lws *wsi, string reciever, string content){
     }
     
 }
+void notifyNewConnection(string username){
+    unsigned char *buffer = message_buffer + LWS_PRE;
+    buffer[0] = USER_STATUS_CHANGED;
+    buffer[1] = static_cast<unsigned char>(username.length());
+    memcpy(buffer + 2, username.c_str(), username.length());
+    buffer[2 + username.length()] = USER_STATUS_CHANGED;
+    size_t total_length = 2 + username.length() + 1; 
+    auto connectedUsers = sourceoftruth.getConnectedUsers();
+    for (const auto& user : connectedUsers) {
+        // Obtener el WSI asociado a cada usuario
+            lws* userWsi = sourceoftruth.get_wsi_by_username(user.username);
+            if (userWsi != nullptr) { //Verificar si existe el usuario
+                lws_write(userWsi, buffer, total_length, LWS_WRITE_BINARY);
+            }
+    }
+
+    
+}
 /*
 void sendChatHistory(lws *wsi,string chatName){
     if (chatName == "~"){
@@ -232,6 +249,7 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
             if (isConnectionValid) {
                 std::cout << "User " << username << "conectado exitosamente" << std::endl;
                 serverLogger.log("Un " + username + "  salvaje se conecto al server ! ");
+                notifyNewConnection(username);
             }
             else {
                 //Rechazar la solictud si la conexión es
