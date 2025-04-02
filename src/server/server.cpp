@@ -173,26 +173,17 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason, void *
             char rawUsername[50] = {0}; //Creamos esta variable para almacenar el username del usuario conectado
             char *query_string = (char *)lws_get_urlarg_by_name(wsi, "name=", rawUsername, sizeof(rawUsername)); //Obtenemos el username de la sesión del usuario
             std::string username = std::string(rawUsername);
-            string realUser = "";
-            for (int i = 0; i<username.length(); i++){
-                if (i == username.length()-8){
-                    break;
-                }
-                else {
-                    realUser += username[i];  
-                }
-            }
             char ip_address[100] = {0};
             char hostname[100] = {0};
             lws_get_peer_addresses(wsi, -1, hostname, sizeof(hostname), ip_address, sizeof(ip_address));
-            bool isConnectionValid = sourceoftruth.insert_user(wsi, realUser, ip_address, 1); //Estado por defecto: Activo
+            bool isConnectionValid = sourceoftruth.insert_user(wsi, username, ip_address, 1); //Estado por defecto: Activo
             if (isConnectionValid) {
-                std::cout << "User " << realUser << "conectado exitosamente" << std::endl;
+                std::cout << "User " << username << "conectado exitosamente" << std::endl;
                 serverLogger.log("Un " + username + "salvaje se conecto! ");
             }
             else {
                 //Rechazar la solictud si la conexión es
-                std::cout << "Rejecting connection from " << rawUsername << " (invalid or duplicate username)" << std::endl;
+                std::cout << "Rejecting connection from " << username << " (invalid or duplicate username)" << std::endl;
                 serverLogger.log("Se rechazo la conexión de:  " + username + "por usuario inválido o duplicado! ");
                 lws_close_reason(wsi, LWS_CLOSE_STATUS_GOINGAWAY, (unsigned char*)"Invalid username", strlen("Invalid username"));
                 return -1;
