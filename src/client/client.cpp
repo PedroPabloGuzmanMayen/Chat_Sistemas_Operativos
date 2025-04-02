@@ -35,12 +35,15 @@ using tcp = boost::asio::ip::tcp;
 
 
 // Estados de usuario
-enum UserStatus {
-    OFFLINE = 0,
-    ONLINE = 1,
-    AWAY = 2,
-    BUSY = 3
-};
+// Desconectado = 0, Activo = 1, Ocupado = 2, Inactivo = 3
+namespace chat {
+    enum UserStatus {
+        DISCONNECTED = 0,
+        ACTIVE = 1,
+        BUSY = 2,
+        INACTIVE = 3
+    };
+}
 
 // Forward declaration
 class ChatWindow;
@@ -87,7 +90,7 @@ public:
     void sendMessageToUser(const std::string& targetUser, const std::string& message);
 
     // Cambiar estado de usuario
-    void setStatus(UserStatus status);
+    void setStatus(chat::UserStatus status);
 
     // Hilo para ejecutar el contexto de IO
     void runIoContext();
@@ -374,27 +377,26 @@ void WebSocketClient::sendMessageToUser(const std::string& targetUser, const std
     }
 }
 
-
-
-void WebSocketClient::setStatus(UserStatus status) {
+void WebSocketClient::setStatus(chat::UserStatus status) {
     try {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!connected_) return;
 
         // Crear mensaje para cambio de estado
         std::vector<uint8_t> buffer;
-        buffer.push_back(CHANGE_STATUS);     // Tipo de mensaje
+        buffer.push_back(CHANGE_STATUS);     // Tipo de mensaje (ya definido en events.h)
         buffer.push_back(static_cast<uint8_t>(status));  // Valor del estado
         
         ws_.binary(true);
         ws_.write(net::buffer(buffer));
         
         std::string statusStr;
-        switch(status) {
-            case ONLINE: statusStr = "Activo"; break;
-            case BUSY: statusStr = "Ocupado"; break;
-            case AWAY: statusStr = "Ausente"; break;
-            case OFFLINE: statusStr = "Desconectado"; break;
+        switch (status) {
+            case chat::ACTIVE:       statusStr = "Activo"; break;
+            case chat::BUSY:         statusStr = "Ocupado"; break;
+            case chat::INACTIVE:     statusStr = "Inactivo"; break;
+            case chat::DISCONNECTED: statusStr = "Desconectado"; break;
+            default:                 statusStr = "Activo"; break;
         }
         
         if (chat_window_) {
@@ -407,6 +409,7 @@ void WebSocketClient::setStatus(UserStatus status) {
         }
     }
 }
+
 
 void WebSocketClient::runReceiveLoop() {
     try {
@@ -664,16 +667,16 @@ void ChatWindow::on_status_change(Fl_Widget* w, void* data) {
     int status = cw->status_choice->value();
     
     if (cw->client_->isConnected()) {
-        UserStatus userStatus;
+        chat::UserStatus userStatus;
         switch (status) {
-            case 0: userStatus = ONLINE; break;
-            case 1: userStatus = BUSY; break;
-            case 2: userStatus = AWAY; break;
-            default: userStatus = ONLINE; break;
+            case 0: userStatus = chat::ACTIVE; break;
+            case 1: userStatus = chat::BUSY; break;
+            case 2: userStatus = chat::INACTIVE; break;
+            default: userStatus = chat::ACTIVE; break;
         }
-        
+    
         cw->client_->setStatus(userStatus);
-        // Solicita la lista actualizada para refrescar la interfaz
+        // Solicitar lista actualizada para refrescar la interfaz
         cw->client_->requestUserList();
     }
 }
@@ -684,20 +687,38 @@ void ChatWindow::updateUserList(const std::vector<std::pair<std::string, uint8_t
     // Limpiar la lista
     user_list->clear();
     
-    // Agregar los usuarios
+    // Agregar los usuarios con el icono y estado en paréntesis
     for (const auto& [username, status] : users) {
-        std::string statusStr;
-        switch(status) {
-            case ONLINE:  statusStr = "■ "; break;  // Cuadrado lleno (Activo)
-            case BUSY:    statusStr = "▲ "; break;  // Triángulo (Ocupado)
-            case AWAY:    statusStr = "◆ "; break;  // Rombos llenos (Ausente)
-            case OFFLINE: statusStr = "□ "; break;  // Cuadrado vacío (Desconectado)
-            default:      statusStr = "? "; break;
+        std::string icon;
+        std::string stateText;
+        // Mapear los estados según el protocolo: 0 = Desconectado, 1 = Activo, 2 = Ocupado, 3 = Inactivo
+        switch (status) {
+            case chat::ACTIVE:
+                icon = "■ "; 
+                stateText = "(Activo)";
+                break;
+            case chat::BUSY:
+                icon = "▲ "; 
+                stateText = "(Ocupado)";
+                break;
+            case chat::INACTIVE:
+                icon = "◆ "; 
+                stateText = "(Inactivo)";
+                break;
+            case chat::DISCONNECTED:
+                icon = "□ "; 
+                stateText = "(Desconectado)";
+                break;
+            default:
+                icon = "? ";
+                stateText = "";
+                break;
         }
         
-        user_list->add((statusStr + username).c_str());
+        std::string displayStr = icon + username + " " + stateText;
+        user_list->add(displayStr.c_str());
         
-        // También agregar al menú desplegable de destinatarios si no es el usuario actual
+        // También agregar al menú de destinatarios si no es el usuario actual
         if (username != username_) {
             addUserToTargetList(username);
         }
