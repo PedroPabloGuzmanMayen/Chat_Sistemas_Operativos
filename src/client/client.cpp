@@ -24,6 +24,8 @@
 #include <thread>
 #include <mutex>
 #include <queue>
+#include "events.h"
+
 
 namespace beast = boost::beast;
 namespace http = beast::http;
@@ -31,20 +33,6 @@ namespace websocket = beast::websocket;
 namespace net = boost::asio;
 using tcp = boost::asio::ip::tcp;
 
-// Definición de los tipos de mensajes que coinciden con el servidor
-enum MessageType {
-    USER_LIST_REQUEST = 1,
-    USER_LIST_RESPONSE = 51,
-    GET_INFO = 3,
-    INFO_RESPONSE = 50,
-    GET_HISTORY = 5,
-    HISTORY_RESPONSE = 6,
-    SEND_MESSAGE = 7,
-    RECEIVE_MESSAGE = 55,
-    SET_STATUS = 9,
-    STATUS_CHANGED = 54,
-    ERROR_MSG = 10
-};
 
 // Estados de usuario
 enum UserStatus {
@@ -293,7 +281,7 @@ void WebSocketClient::requestUserList() {
 
         // Crear mensaje de solicitud de lista de usuarios
         std::vector<uint8_t> buffer;
-        buffer.push_back(USER_LIST_REQUEST);  // Tipo de mensaje
+        buffer.push_back(LIST_USERS);  // Tipo de mensaje
         
         ws_.binary(true);
         ws_.write(net::buffer(buffer));
@@ -316,7 +304,7 @@ void WebSocketClient::requestUserInfo(const std::string& targetUser) {
 
         // Crear mensaje de solicitud de información
         std::vector<uint8_t> buffer;
-        buffer.push_back(GET_INFO);  // Tipo de mensaje
+        buffer.push_back(GET_USER_INFO);  // Tipo de mensaje
         
         // Añadir el nombre de usuario objetivo
         for (char c : targetUser) {
@@ -362,7 +350,7 @@ void WebSocketClient::sendMessageToUser(const std::string& targetUser, const std
         // Construir el mensaje siguiendo el protocolo:
         // [ID (1 byte)] [Len(targetUser) (1 byte)] [targetUser] [Len(message) (1 byte)] [message]
         std::vector<uint8_t> buffer;
-        buffer.push_back(4);  // ID 4: SEND_MESSAGE según el protocolo
+        buffer.push_back(SEND_MESSAGE);  // Usamos la constante SEND_MESSAGE en lugar de un literal (valor 4)
         
         // Agregar el nombre del destinatario
         buffer.push_back(static_cast<uint8_t>(targetUser.length()));
@@ -387,6 +375,7 @@ void WebSocketClient::sendMessageToUser(const std::string& targetUser, const std
 }
 
 
+
 void WebSocketClient::setStatus(UserStatus status) {
     try {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -394,7 +383,7 @@ void WebSocketClient::setStatus(UserStatus status) {
 
         // Crear mensaje para cambio de estado
         std::vector<uint8_t> buffer;
-        buffer.push_back(SET_STATUS);     // Tipo de mensaje
+        buffer.push_back(CHANGE_STATUS);     // Tipo de mensaje
         buffer.push_back(static_cast<uint8_t>(status));  // Valor del estado
         
         ws_.binary(true);
@@ -477,7 +466,7 @@ void WebSocketClient::handleMessage(uint8_t messageType, const uint8_t* data, si
             break;
         }
         
-        case INFO_RESPONSE: { // ID 52
+        case USER_INFO_RESPONSE: { // ID 52
             std::string info(reinterpret_cast<const char*>(data), length);
             if (chat_window_) {
                 chat_window_->enqueueMessage("Información: " + info);
@@ -500,7 +489,7 @@ void WebSocketClient::handleMessage(uint8_t messageType, const uint8_t* data, si
             break;
         }        
         
-        case RECEIVE_MESSAGE: { // ID 55, utilizando 1 byte para longitudes
+        case MESSAGE_RECEIVED: { // ID 55, utilizando 1 byte para longitudes
             if (length > 0) {
                 uint8_t senderLength = data[0];
                 if (1 + senderLength + 1 <= length) {
@@ -684,6 +673,8 @@ void ChatWindow::on_status_change(Fl_Widget* w, void* data) {
         }
         
         cw->client_->setStatus(userStatus);
+        // Solicita la lista actualizada para refrescar la interfaz
+        cw->client_->requestUserList();
     }
 }
 
@@ -697,11 +688,11 @@ void ChatWindow::updateUserList(const std::vector<std::pair<std::string, uint8_t
     for (const auto& [username, status] : users) {
         std::string statusStr;
         switch(status) {
-            case ONLINE: statusStr = "● "; break; // Verde
-            case BUSY: statusStr = "● "; break;   // Rojo
-            case AWAY: statusStr = "● "; break;   // Amarillo
-            case OFFLINE: statusStr = "○ "; break; // Gris
-            default: statusStr = "? "; break;
+            case ONLINE:  statusStr = "■ "; break;  // Cuadrado lleno (Activo)
+            case BUSY:    statusStr = "▲ "; break;  // Triángulo (Ocupado)
+            case AWAY:    statusStr = "◆ "; break;  // Rombos llenos (Ausente)
+            case OFFLINE: statusStr = "□ "; break;  // Cuadrado vacío (Desconectado)
+            default:      statusStr = "? "; break;
         }
         
         user_list->add((statusStr + username).c_str());
