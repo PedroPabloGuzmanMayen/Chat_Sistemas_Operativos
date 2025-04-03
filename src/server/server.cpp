@@ -180,11 +180,11 @@ void sendMessage(struct lws *wsi, string reciever, string content) {
     if (reciever == "~") {
         sourceoftruth.insertMessage(wsi, reciever, content);
         buffer[0] = MESSAGE_RECEIVED;
-        buffer[1] = static_cast<unsigned char>(sender->username.length());
-        memcpy(buffer + 2, sender->username.c_str(), sender->username.length());
-        buffer[2 + sender->username.length()] = static_cast<unsigned char>(content.length()); // Length of message
-        memcpy(buffer + 3 + sender->username.length(), content.c_str(), content.length() + 1); // Message content
-        size_t total_length = 3 + sender->username.length() + content.length();
+        buffer[1] = static_cast<unsigned char>(reciever.length());
+        memcpy(buffer + 2, reciever.c_str(), reciever.length());
+        buffer[2 + reciever.length()] = static_cast<unsigned char>(content.length()); // Length of message
+        memcpy(buffer + 3 + reciever.length(), content.c_str(), content.length() + 1); // Message content
+        size_t total_length = 3 + reciever.length() + content.length();
         serverLogger.log(sender->username + " envió un mensaje al chat general");
         
 
