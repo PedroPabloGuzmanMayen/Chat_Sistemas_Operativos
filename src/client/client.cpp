@@ -256,9 +256,6 @@ bool WebSocketClient::connect(const std::string& host, const std::string& port) 
         // Iniciar el hilo para el contexto de IO y el bucle de recepción
         ioc_thread_ = std::thread([this]() { runIoContext(); });
         
-        if (chat_window_) {
-            chat_window_->enqueueMessage("Conectado al servidor como: " + username_);
-        }
         return true;
     }
     catch (std::exception const& e) {
@@ -297,9 +294,6 @@ void WebSocketClient::requestUserList() {
         ws_.binary(true);
         ws_.write(net::buffer(buffer));
         
-        if (chat_window_) {
-            chat_window_->enqueueMessage("Solicitando lista de usuarios...");
-        }
     }
     catch (std::exception const& e) {
         if (chat_window_) {
@@ -414,10 +408,6 @@ void WebSocketClient::setStatus(chat::UserStatus status) {
             case chat::INACTIVE:     statusStr = "Inactivo"; break;
             case chat::DISCONNECTED: statusStr = "Desconectado"; break;
             default:                 statusStr = "Activo"; break;
-        }
-        
-        if (chat_window_) {
-            chat_window_->enqueueMessage("Estado actualizado a: " + statusStr);
         }
     }
     catch (std::exception const& e) {
@@ -545,7 +535,7 @@ void WebSocketClient::handleMessage(uint8_t messageType, const uint8_t* data, si
                     uint8_t status = data[1 + usernameLength];
                     if (chat_window_) {
                         // En vez de llamar a appendToChat, encola el mensaje
-                        chat_window_->enqueueMessage("Estado de " + username + " actualizado a: " + std::to_string(status));
+                        //chat_window_->enqueueMessage("Estado de " + username + " actualizado a: " + std::to_string(status));
                     }
                 }
             }
