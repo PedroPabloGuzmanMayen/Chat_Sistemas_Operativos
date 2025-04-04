@@ -173,7 +173,6 @@ public:
     }
 
     void processPendingMessages() {
-        // Asumimos que estamos en el hilo principal, así que no usamos Fl::lock()/Fl::unlock() aquí
         std::lock_guard<std::mutex> lock(uiQueueMutex);
         while (!uiMessageQueue.empty()) {
             std::string msg = uiMessageQueue.front();
@@ -184,17 +183,17 @@ public:
         chat_disp->show_insert_position();
     }
     
-    // En ChatWindow, agregá esta función estática:
+
     static void updateUserListCallback(void* data) {
         ChatWindow* cw = static_cast<ChatWindow*>(data);
         if (cw->client_->isConnected()) {
             cw->client_->requestUserList();
         }
-        // Reprogramar la actualización en 5 segundos (o el intervalo que prefieras)
+        // Reprogramar la actualización en 5 segundos
         Fl::repeat_timeout(5.0, updateUserListCallback, cw);
     }
 
-    // Modificar idle_cb para llamar a processPendingMessages:
+    //  idle_cb para llama a processPendingMessages:
     static void idle_cb(void* data) {
         ChatWindow* cw = static_cast<ChatWindow*>(data);
         cw->processPendingMessages();
@@ -204,7 +203,6 @@ public:
         // Esta función puede ser llamada desde otro hilo, así que necesitamos
         // usar Fl::lock() y Fl::unlock() para hacer thread-safe las operaciones de FLTK
         std::string fullText = text + "\n";
-        // Imprimir en la consola para depuración
         std::cout << "[DEBUG] appendToChat: " << fullText << std::endl;
         
         Fl::lock();
@@ -395,7 +393,7 @@ void WebSocketClient::setStatus(chat::UserStatus status) {
 
         // Crear mensaje para cambio de estado
         std::vector<uint8_t> buffer;
-        buffer.push_back(CHANGE_STATUS);     // Tipo de mensaje (ya definido en events.h)
+        buffer.push_back(CHANGE_STATUS);     // Tipo de mensaje
         buffer.push_back(static_cast<uint8_t>(status));  // Valor del estado
         
         ws_.binary(true);
@@ -506,7 +504,6 @@ void WebSocketClient::handleMessage(uint8_t messageType, const uint8_t* data, si
             std::string info(reinterpret_cast<const char*>(data + 1 + usernameLength + 1), 
                         length - (1 + usernameLength + 1));
         
-            // Traducir estado a texto
             std::string statusStr;
             switch(status) {
                 case chat::ACTIVE:       statusStr = "🟢 Activo"; break;
@@ -534,7 +531,6 @@ void WebSocketClient::handleMessage(uint8_t messageType, const uint8_t* data, si
                     std::string username(reinterpret_cast<const char*>(data + 1), usernameLength);
                     uint8_t status = data[1 + usernameLength];
                     if (chat_window_) {
-                        // En vez de llamar a appendToChat, encola el mensaje
                         //chat_window_->enqueueMessage("Estado de " + username + " actualizado a: " + std::to_string(status));
                     }
                 }
@@ -676,7 +672,7 @@ void ChatWindow::on_send(Fl_Widget* w, void* data) {
 
     if (!msg.empty() && cw->client_->isConnected()) {
         // Si el estado actual (según la elección del usuario) es "Inactivo", pasarlo a "Activo"
-        // Suponiendo: 1 -> "Activo", 2 -> "Ocupado", 3 -> "Inactivo"
+        // 1 -> "Activo", 2 -> "Ocupado", 3 -> "Inactivo"
         if (cw->status_choice->value() == 2) {
             cw->status_choice->value(1); // Actualiza la UI a "Activo"
             cw->client_->setStatus(chat::ACTIVE);
@@ -780,7 +776,6 @@ void ChatWindow::updateUserList(const std::vector<std::pair<std::string, uint8_t
         std::string displayStr = icon + username + " " + stateText;
         user_list->add(displayStr.c_str());
         
-        // También agregar al menú de destinatarios si no es el usuario actual
         if (username != username_) {
             addUserToTargetList(username);
         }
